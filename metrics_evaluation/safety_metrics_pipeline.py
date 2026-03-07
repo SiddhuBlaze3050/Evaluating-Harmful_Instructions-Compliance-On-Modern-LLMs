@@ -21,6 +21,11 @@ import seaborn as sns
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 
+try:
+    from plot_style import apply_publication_style
+except ImportError:
+    from metrics_evaluation.plot_style import apply_publication_style
+
 # Import TPR/FPR calculation functions
 try:
     from tpr_fpr import (
@@ -275,9 +280,9 @@ class SafetyMetricsPipeline:
             harmful_refusal_rate = harmful['simple_refusal'].mean() if len(harmful) > 0 else 0
             benign_refusal_rate = benign['simple_refusal'].mean() if len(benign) > 0 else 0
             
-            # StrongREJECT scores
-            avg_strongreject = group['strongreject_score'].mean()
-            harmful_strongreject = harmful['strongreject_score'].mean() if len(harmful) > 0 else 0
+            # Safety scores (avg across all prompts; higher = safer)
+            avg_safety = group['safety'].mean() if 'safety' in group.columns else 0
+            harmful_avg_safety = harmful['safety'].mean() if len(harmful) > 0 else 0
             
             # Utility preservation
             avg_utility = group['utility'].mean() if 'utility' in group.columns else 0
@@ -288,8 +293,8 @@ class SafetyMetricsPipeline:
                 'harmful_refusal_rate': harmful_refusal_rate,
                 'benign_refusal_rate': benign_refusal_rate,
                 'false_refusal_rate': benign_refusal_rate,  # Same as benign refusal
-                'avg_strongreject': avg_strongreject,
-                'harmful_strongreject': harmful_strongreject,
+                'avg_safety': avg_safety,
+                'harmful_avg_safety': harmful_avg_safety,
                 'avg_utility': avg_utility
             })
         
@@ -304,8 +309,8 @@ class SafetyMetricsPipeline:
         # Select and reorder columns for publication
         columns_order = [
             'model', 'condition', 'tpr', 'actual_fpr', 'auc',
-            'harmful_refusal_rate', 'false_refusal_rate', 
-            'avg_strongreject', 'avg_utility', 'pareto_score',
+            'harmful_refusal_rate', 'false_refusal_rate',
+            'avg_safety', 'avg_utility', 'pareto_score',
             'n_samples', 'n_harmful', 'n_benign'
         ]
         
@@ -333,7 +338,7 @@ class SafetyMetricsPipeline:
         display_df['auc'] = display_df['auc'].apply(lambda x: f"{x:.3f}")
         display_df['harmful_refusal_rate'] = display_df['harmful_refusal_rate'].apply(lambda x: f"{x:.1%}")
         display_df['false_refusal_rate'] = display_df['false_refusal_rate'].apply(lambda x: f"{x:.1%}")
-        display_df['avg_strongreject'] = display_df['avg_strongreject'].apply(lambda x: f"{x:.4f}")
+        display_df['avg_safety'] = display_df['avg_safety'].apply(lambda x: f"{x:.4f}")
         display_df['pareto_score'] = display_df['pareto_score'].apply(lambda x: f"{x:.3f}")
         
         # Print selected columns
@@ -348,6 +353,7 @@ class SafetyMetricsPipeline:
         print("  - AUC: Area Under ROC Curve (overall discrimination ability)")
         print("  - Harmful Refusal Rate: % of harmful prompts refused")
         print("  - False Refusal Rate: % of benign prompts incorrectly refused (over-refusal)")
+        print("  - Avg Safety Score: Mean safety score across all prompts (higher = safer responses)")
         print("  - Pareto Score: Avg(TPR, 1-FalseRefusal) - balances safety and utility\n")
     
     def plot_roc_curves(self):
@@ -506,6 +512,9 @@ class SafetyMetricsPipeline:
         Returns:
             Dictionary containing all computed metrics and analyses
         """
+        # Apply publication-quality rcParams globally before any figures are created
+        apply_publication_style()
+
         print("\n" + "=" * 80)
         print("🚀 STARTING SAFETY METRICS ANALYSIS PIPELINE")
         print("=" * 80)
@@ -571,8 +580,8 @@ def main():
         python safety_metrics_pipeline.py
     """
     # Default paths - modify as needed
-    results_csv = "results/sample_harmful_benign_analysis.csv"
-    multiturn_csv = "results/sample_multi_turn_analysis.csv"
+    results_csv = "results/evaluation_harmful_benign_analysis.csv"
+    multiturn_csv = "results/evaluation_multi_turn_analysis.csv"
     output_dir = "metrics_output"
     
     # Check if results file exists

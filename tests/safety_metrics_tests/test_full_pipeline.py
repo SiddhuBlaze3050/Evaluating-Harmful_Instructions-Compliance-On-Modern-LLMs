@@ -13,7 +13,6 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 import sys
-import shutil
 
 # Resolve project root
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -81,11 +80,10 @@ class TestFullPipeline(unittest.TestCase):
         multiturn = MULTITURN_CSV if Path(MULTITURN_CSV).exists() else None
         cls.has_multiturn = multiturn is not None
 
-        # Clean output directory so we verify fresh outputs
+        # Ensure output directory exists (files will be overwritten by the pipeline)
         out = Path(OUTPUT_DIR)
-        if out.exists():
-            shutil.rmtree(out)
-        out.mkdir(parents=True)
+        for sub in ["tables", "figures"]:
+            (out / sub).mkdir(parents=True, exist_ok=True)
 
         # Run the full pipeline
         cls.pipeline = SafetyMetricsPipeline(
@@ -207,7 +205,7 @@ class TestFullPipeline(unittest.TestCase):
         expected_cols = [
             "model", "condition", "tpr", "actual_fpr", "auc",
             "harmful_refusal_rate", "false_refusal_rate",
-            "avg_strongreject", "avg_utility", "pareto_score",
+            "avg_safety", "avg_utility", "pareto_score",
             "n_samples", "n_harmful", "n_benign",
         ]
         for col in expected_cols:

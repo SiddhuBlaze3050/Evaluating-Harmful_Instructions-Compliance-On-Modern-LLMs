@@ -19,6 +19,24 @@ import seaborn as sns
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+try:
+    from adjustText import adjust_text as _adjust_text
+except ImportError:
+    _adjust_text = None
+
+try:
+    from plot_style import (
+        style_axes, format_legend,
+        condition_color, condition_marker, condition_label, short_model_name,
+        FIGURE_DPI, FIG_SINGLE, FIG_WIDE, LINE_WIDTH, FONT_SIZE_ANNOT, FONT_SIZE_LEGEND,
+    )
+except ImportError:
+    from metrics_evaluation.plot_style import (
+        style_axes, format_legend,
+        condition_color, condition_marker, condition_label, short_model_name,
+        FIGURE_DPI, FIG_SINGLE, FIG_WIDE, LINE_WIDTH, FONT_SIZE_ANNOT, FONT_SIZE_LEGEND,
+    )
+
 # Import Wilson CI functions
 try:
     from confidence_intervals import wilson_ci
@@ -171,64 +189,70 @@ def plot_safety_frr_tradeoff(df: pd.DataFrame,
     # Merge TPR with FRR
     plot_df = frr_df.merge(tpr_df, on=['model', 'condition'], how='inner')
     
-    # Create plot
-    plt.figure(figsize=(12, 8))
-    
-    # Color by condition
+    # Create figure (fig/ax interface for publication-quality control)
+    fig, ax = plt.subplots(figsize=FIG_SINGLE)
+
+    # Color / marker by condition — from shared style module
     conditions = plot_df['condition'].unique()
-    colors = {'baseline': 'red', 'safedecoding': 'blue', 'llamaguard3': 'green'}
-    markers = {'baseline': 'o', 'safedecoding': 's', 'llamaguard3': '^'}
-    
+
+    all_texts = []
+    all_x, all_y = [], []
+
     for condition in conditions:
         subset = plot_df[plot_df['condition'] == condition]
-        
-        plt.scatter(
-            subset['frr'], 
+
+        ax.scatter(
+            subset['frr'],
             subset['tpr'],
-            c=colors.get(condition, 'gray'),
-            marker=markers.get(condition, 'o'),
-            s=200,
-            alpha=0.7,
-            label=condition,
-            edgecolors='black',
-            linewidths=1.5
+            c=condition_color(condition),
+            marker=condition_marker(condition),
+            s=100,
+            alpha=0.85,
+            label=condition_label(condition),
+            edgecolors='white',
+            linewidths=0.6,
+            zorder=3,
         )
-        
-        # Add model labels
+
         for _, row in subset.iterrows():
-            plt.annotate(
-                row['model'].split('-')[0],  # Shorten model name
-                xy=(row['frr'], row['tpr']),
-                xytext=(5, 5),
-                textcoords='offset points',
-                fontsize=9,
-                alpha=0.8
+            all_x.append(row['frr'])
+            all_y.append(row['tpr'])
+            all_texts.append(
+                ax.text(row['frr'], row['tpr'],
+                        short_model_name(row['model']),
+                        fontsize=FONT_SIZE_ANNOT, alpha=0.85)
             )
-    
-    # Add reference lines
-    plt.axhline(y=0.9, color='green', linestyle='--', alpha=0.3, 
-                label='Target Safety (90% TPR)')
-    plt.axvline(x=0.1, color='orange', linestyle='--', alpha=0.3,
-                label='Acceptable FRR (10%)')
-    
-    # Ideal region annotation
-    plt.fill_between([0, 0.1], 0.9, 1.0, alpha=0.1, color='green',
-                     label='Ideal Region')
-    
-    plt.xlabel("False Refusal Rate (Over-Refusal on Benign)", fontsize=14)
-    plt.ylabel("True Positive Rate (Harmful Detection)", fontsize=14)
-    plt.title("Safety-Utility Tradeoff: Harmful Detection vs Over-Refusal", 
-              fontsize=16, fontweight='bold')
-    plt.legend(fontsize=11, loc='lower left')
-    plt.grid(alpha=0.3, linestyle=':')
-    
-    # Set axis limits with padding
-    plt.xlim(-0.05, plot_df['frr'].max() + 0.1)
-    plt.ylim(plot_df['tpr'].min() - 0.1, 1.05)
-    
+
+    # Reference lines
+    ax.axhline(y=0.9, color='#2CA02C', linestyle='--', lw=0.9, alpha=0.4,
+               label='Target Safety (90% TPR)')
+    ax.axvline(x=0.1, color='#FF7F0E', linestyle='--', lw=0.9, alpha=0.4,
+               label='Acceptable FRR (10%)')
+
+    # Ideal region shading
+    ax.fill_between([0, 0.1], 0.9, 1.0, alpha=0.08, color='#2CA02C',
+                    label='Ideal Region')
+
+    ax.set_xlabel("False Refusal Rate (Over-Refusal on Benign)")
+    ax.set_ylabel("True Positive Rate (Harmful Detection)")
+    ax.set_title("Safety\u2013Utility Tradeoff: Harmful Detection vs Over-Refusal")
+
+    # Axis limits with padding
+    ax.set_xlim(-0.02, plot_df['frr'].max() + 0.1)
+    ax.set_ylim(max(0, plot_df['tpr'].min() - 0.1), 1.05)
+
+    style_axes(ax, grid='both')
+    format_legend(ax, loc='lower left')
+
+    # Auto-repel labels so they don't overlap
+    if _adjust_text is not None and all_texts:
+        _adjust_text(all_texts, x=all_x, y=all_y, ax=ax,
+                     arrowprops=dict(arrowstyle='-', color='#999999', lw=0.5),
+                     expand=(1.5, 1.5), force_text=(0.8, 0.8))
+
     plt.tight_layout()
-    plt.savefig(output_path / "safety_frr_tradeoff.png", dpi=300, bbox_inches='tight')
-    plt.close()
+    fig.savefig(output_path / "safety_frr_tradeoff.png", dpi=FIGURE_DPI, bbox_inches='tight')
+    plt.close(fig)
 
 
 def plot_frr_by_condition(frr_condition_df: pd.DataFrame,
@@ -247,54 +271,50 @@ def plot_frr_by_condition(frr_condition_df: pd.DataFrame,
     plot_df = frr_condition_df.sort_values('frr')
     
     # Create figure
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=FIG_SINGLE)
     
-    # Color palette
-    colors = {'baseline': '#e74c3c', 'safedecoding': '#3498db', 'llamaguard3': '#2ecc71'}
-    bar_colors = [colors.get(c, '#95a5a6') for c in plot_df['condition']]
-    
+    # Color palette — shared style module
+    bar_colors = [condition_color(c) for c in plot_df['condition']]
+
     # Create bars
     x_pos = np.arange(len(plot_df))
-    bars = ax.bar(x_pos, plot_df['frr'], 
-                   color=bar_colors, alpha=0.8, edgecolor='black', linewidth=1.5)
-    
+    bars = ax.bar(x_pos, plot_df['frr'],
+                   color=bar_colors, alpha=0.85, edgecolor='white', linewidth=0.5)
+
     # Add error bars (Wilson CI)
     errors_lower = plot_df['frr'] - plot_df['ci_lower']
     errors_upper = plot_df['ci_upper'] - plot_df['frr']
-    ax.errorbar(x_pos, plot_df['frr'], 
+    ax.errorbar(x_pos, plot_df['frr'],
                 yerr=[errors_lower, errors_upper],
-                fmt='none', ecolor='black', capsize=8, capthick=2, alpha=0.7)
+                fmt='none', ecolor='#333333', capsize=5, capthick=1.2, alpha=0.9)
     
     # Add value labels on bars
     for i, (idx, row) in enumerate(plot_df.iterrows()):
         height = row['frr']
-        ax.text(i, height + row['ci_margin'] + 0.02, 
+        ax.text(i, height + row['ci_margin'] + 0.02,
                 f"{height:.1%}\n[{row['ci_lower']:.1%}, {row['ci_upper']:.1%}]",
-                ha='center', va='bottom', fontsize=10, fontweight='bold')
+                ha='center', va='bottom', fontsize=FONT_SIZE_ANNOT, fontweight='bold')
     
     # Customize plot
-    ax.set_xlabel("Defense Condition", fontsize=14, fontweight='bold')
-    ax.set_ylabel("False Refusal Rate", fontsize=14, fontweight='bold')
-    ax.set_title("Over-Refusal by Defense Mechanism\n(Lower is Better)", 
-                 fontsize=16, fontweight='bold')
+    ax.set_xlabel("Defense Condition", fontweight='bold')
+    ax.set_ylabel("False Refusal Rate", fontweight='bold')
+    ax.set_title("Over-Refusal by Defense Mechanism\n(Lower is Better)")
     ax.set_xticks(x_pos)
-    ax.set_xticklabels(plot_df['condition'], fontsize=12)
-    
+    ax.set_xticklabels([condition_label(c) for c in plot_df['condition']])
+
     # Format y-axis as percentage
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.0%}'))
-    
-    # Add grid
-    ax.grid(axis='y', alpha=0.3, linestyle='--')
-    ax.set_axisbelow(True)
-    
-    # Add reference line at 10% (acceptable threshold)
-    ax.axhline(y=0.1, color='orange', linestyle='--', linewidth=2, alpha=0.5,
+
+    # Reference threshold line
+    ax.axhline(y=0.1, color='#FF7F0E', linestyle='--', linewidth=1.2, alpha=0.6,
                label='Acceptable Threshold (10%)')
-    ax.legend(fontsize=11)
-    
+
+    style_axes(ax, grid='y')
+    format_legend(ax)
+
     plt.tight_layout()
-    plt.savefig(output_path / "frr_by_condition.png", dpi=300, bbox_inches='tight')
-    plt.close()
+    fig.savefig(output_path / "frr_by_condition.png", dpi=FIGURE_DPI, bbox_inches='tight')
+    plt.close(fig)
 
 
 def plot_frr_by_model_condition(frr_df: pd.DataFrame,
@@ -313,29 +333,30 @@ def plot_frr_by_model_condition(frr_df: pd.DataFrame,
     pivot_df = frr_df.pivot(index='model', columns='condition', values='frr')
     
     # Create figure
-    fig, ax = plt.subplots(figsize=(14, 7))
+    fig, ax = plt.subplots(figsize=FIG_WIDE)
     
-    # Plot grouped bars
-    pivot_df.plot(kind='bar', ax=ax, width=0.8, 
-                  color=['#e74c3c', '#2ecc71', '#3498db'],
-                  edgecolor='black', linewidth=1.5, alpha=0.8)
+    # Plot grouped bars — use shared condition colours in column order
+    ordered_cols = list(pivot_df.columns)
+    bar_palette = [condition_color(c) for c in ordered_cols]
+    pivot_df.plot(kind='bar', ax=ax, width=0.8,
+                  color=bar_palette,
+                  edgecolor='white', linewidth=0.5, alpha=0.85)
     
     # Customize
-    ax.set_xlabel("Model", fontsize=14, fontweight='bold')
-    ax.set_ylabel("False Refusal Rate", fontsize=14, fontweight='bold')
-    ax.set_title("Over-Refusal Across Models and Conditions", 
-                 fontsize=16, fontweight='bold')
+    ax.set_xlabel("Model", fontweight='bold')
+    ax.set_ylabel("False Refusal Rate", fontweight='bold')
+    ax.set_title("Over-Refusal Across Models and Conditions")
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.0%}'))
-    ax.legend(title='Condition', fontsize=11, title_fontsize=12)
-    ax.grid(axis='y', alpha=0.3, linestyle='--')
-    ax.set_axisbelow(True)
-    
+    ax.legend(title='Condition', fontsize=FONT_SIZE_LEGEND,
+              title_fontsize=FONT_SIZE_LEGEND)
+    style_axes(ax, grid='y')
+
     # Rotate x-axis labels for readability
-    plt.xticks(rotation=45, ha='right')
-    
+    plt.xticks(rotation=30, ha='right')
+
     plt.tight_layout()
-    plt.savefig(output_path / "frr_by_model_condition.png", dpi=300, bbox_inches='tight')
-    plt.close()
+    fig.savefig(output_path / "frr_by_model_condition.png", dpi=FIGURE_DPI, bbox_inches='tight')
+    plt.close(fig)
 
 
 def print_frr_summary(frr_df: pd.DataFrame, 

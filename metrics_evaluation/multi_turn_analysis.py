@@ -21,6 +21,21 @@ from scipy.stats import linregress
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+try:
+    from plot_style import (
+        style_axes, format_legend,
+        condition_color, condition_marker, condition_label,
+        FIGURE_DPI, FIG_SINGLE, FIG_WIDE, FIG_GRID_3x3,
+        LINE_WIDTH,
+    )
+except ImportError:
+    from metrics_evaluation.plot_style import (
+        style_axes, format_legend,
+        condition_color, condition_marker, condition_label,
+        FIGURE_DPI, FIG_SINGLE, FIG_WIDE, FIG_GRID_3x3,
+        LINE_WIDTH,
+    )
+
 
 def analyze_multiturn_degradation(multiturn_results: pd.DataFrame, 
                                    output_dir: str = "metrics_output",
@@ -52,36 +67,35 @@ def analyze_multiturn_degradation(multiturn_results: pd.DataFrame,
     })
     
     # Plot safety degradation
-    plt.figure(figsize=(10, 6))
-    
+    fig, ax = plt.subplots(figsize=FIG_SINGLE)
+
     turns = by_turn.index
     safety_mean = by_turn[(metric_column, 'mean')]
     safety_std = by_turn[(metric_column, 'std')]
-    
-    plt.plot(turns, safety_mean, marker='o', linewidth=2,
-             label='Mean Safety Score')
-    plt.fill_between(turns,
-                     safety_mean - safety_std,
-                     safety_mean + safety_std,
-                     alpha=0.3)
-    
-    plt.xlabel("Conversation Turn", fontsize=12)
-    plt.ylabel(f"{metric_column.replace('_', ' ').title()}", fontsize=12)
-    plt.title("Safety Degradation Across Turns", fontsize=14)
-    plt.legend()
-    plt.grid(alpha=0.3)
-    
+
+    ax.plot(turns, safety_mean, marker='o', linewidth=LINE_WIDTH,
+            color='#1F77B4', label='Mean Safety Score')
+    ax.fill_between(turns,
+                    safety_mean - safety_std,
+                    safety_mean + safety_std,
+                    alpha=0.2, color='#1F77B4')
+
+    ax.set_xlabel("Conversation Turn")
+    ax.set_ylabel(f"{metric_column.replace('_', ' ').title()}")
+    ax.set_title("Safety Degradation Across Turns")
+
     # Add linear regression line
     slope, intercept, r_value, p_value, std_err = linregress(turns, safety_mean)
-    
-    plt.plot(turns, slope * turns + intercept,
-             '--', color='red',
-             label=f'Linear fit (R²={r_value**2:.3f})')
-    
-    plt.legend()
+
+    ax.plot(turns, slope * turns + intercept,
+            '--', color='#D62728', linewidth=LINE_WIDTH,
+            label=f'Linear Fit (R\u00b2={r_value**2:.3f})')
+
+    style_axes(ax, grid='both')
+    format_legend(ax)
     plt.tight_layout()
-    plt.savefig(output_path / "multiturn_degradation.png", dpi=300, bbox_inches='tight')
-    plt.close()
+    fig.savefig(output_path / "multiturn_degradation.png", dpi=FIGURE_DPI, bbox_inches='tight')
+    plt.close(fig)
     
     return {
         "slope": slope,  # Negative = degradation
@@ -113,16 +127,16 @@ def analyze_by_model_condition(multiturn_results: pd.DataFrame,
     results = []
     
     # Create comparison plot
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
-    
+    fig, axes = plt.subplots(1, 2, figsize=FIG_WIDE)
+
     # Plot 1: By Model
     ax1 = axes[0]
-    for model in multiturn_results['model'].unique():
+    for model in sorted(multiturn_results['model'].unique()):
         model_data = multiturn_results[multiturn_results['model'] == model]
         by_turn = model_data.groupby('turn_number')[metric_column].mean()
-        
-        ax1.plot(by_turn.index, by_turn.values, marker='o', 
-                linewidth=2, label=model)
+
+        ax1.plot(by_turn.index, by_turn.values, marker='o',
+                linewidth=LINE_WIDTH, label=model)
         
         # Compute regression
         if len(by_turn) > 1:
@@ -141,20 +155,23 @@ def analyze_by_model_condition(multiturn_results: pd.DataFrame,
                 'total_degradation': by_turn.iloc[-1] - by_turn.iloc[0]
             })
     
-    ax1.set_xlabel("Conversation Turn", fontsize=12)
-    ax1.set_ylabel(f"{metric_column.replace('_', ' ').title()}", fontsize=12)
-    ax1.set_title("Safety Degradation by Model", fontsize=14)
-    ax1.legend()
-    ax1.grid(alpha=0.3)
-    
+    ax1.set_xlabel("Conversation Turn")
+    ax1.set_ylabel(f"{metric_column.replace('_', ' ').title()}")
+    ax1.set_title("Safety Degradation by Model")
+    style_axes(ax1)
+    format_legend(ax1)
+
     # Plot 2: By Condition
     ax2 = axes[1]
-    for condition in multiturn_results['evaluation_type'].unique():
+    for condition in sorted(multiturn_results['evaluation_type'].unique()):
         cond_data = multiturn_results[multiturn_results['evaluation_type'] == condition]
         by_turn = cond_data.groupby('turn_number')[metric_column].mean()
-        
-        ax2.plot(by_turn.index, by_turn.values, marker='s',
-                linewidth=2, label=condition)
+        color = condition_color(condition)
+        mkr = condition_marker(condition)
+
+        ax2.plot(by_turn.index, by_turn.values, marker=mkr,
+                linewidth=LINE_WIDTH, color=color,
+                label=condition_label(condition))
         
         # Compute regression
         if len(by_turn) > 1:
@@ -173,27 +190,29 @@ def analyze_by_model_condition(multiturn_results: pd.DataFrame,
                 'total_degradation': by_turn.iloc[-1] - by_turn.iloc[0]
             })
     
-    ax2.set_xlabel("Conversation Turn", fontsize=12)
-    ax2.set_ylabel(f"{metric_column.replace('_', ' ').title()}", fontsize=12)
-    ax2.set_title("Safety Degradation by Condition", fontsize=14)
-    ax2.legend()
-    ax2.grid(alpha=0.3)
-    
+    ax2.set_xlabel("Conversation Turn")
+    ax2.set_ylabel(f"{metric_column.replace('_', ' ').title()}")
+    ax2.set_title("Safety Degradation by Condition")
+    style_axes(ax2)
+    format_legend(ax2)
+
     plt.tight_layout()
-    plt.savefig(output_path / "multiturn_degradation_comparison.png", 
-                dpi=300, bbox_inches='tight')
-    plt.close()
+    fig.savefig(output_path / "multiturn_degradation_comparison.png",
+                dpi=FIGURE_DPI, bbox_inches='tight')
+    plt.close(fig)
     
     # Detailed analysis: Each model-condition combination
+    n_models_det = len(multiturn_results['model'].unique())
+    n_conds_det = len(multiturn_results['evaluation_type'].unique())
     fig, axes = plt.subplots(
-        len(multiturn_results['model'].unique()),
-        len(multiturn_results['evaluation_type'].unique()),
-        figsize=(15, 12)
+        n_models_det,
+        n_conds_det,
+        figsize=FIG_GRID_3x3,
     )
     
-    if len(multiturn_results['model'].unique()) == 1:
+    if n_models_det == 1:
         axes = axes.reshape(1, -1)
-    if len(multiturn_results['evaluation_type'].unique()) == 1:
+    if n_conds_det == 1:
         axes = axes.reshape(-1, 1)
     
     for i, model in enumerate(sorted(multiturn_results['model'].unique())):
@@ -214,11 +233,13 @@ def analyze_by_model_condition(multiturn_results: pd.DataFrame,
                 mean_vals = by_turn[(metric_column, 'mean')]
                 std_vals = by_turn[(metric_column, 'std')]
                 
-                ax.plot(turns, mean_vals, marker='o', linewidth=2, color='blue')
+                cond_color = condition_color(condition)
+                ax.plot(turns, mean_vals, marker='o', linewidth=LINE_WIDTH,
+                        color=cond_color)
                 ax.fill_between(turns,
                                mean_vals - std_vals,
                                mean_vals + std_vals,
-                               alpha=0.3, color='blue')
+                               alpha=0.2, color=cond_color)
                 
                 # Linear fit
                 if len(turns) > 1:
@@ -241,19 +262,20 @@ def analyze_by_model_condition(multiturn_results: pd.DataFrame,
                         'total_degradation': mean_vals.iloc[-1] - mean_vals.iloc[0]
                     })
                 
-                ax.set_title(f"{model}\n{condition}", fontsize=10)
-                ax.grid(alpha=0.3)
-                ax.legend(fontsize=8)
-            
-            if i == len(multiturn_results['model'].unique()) - 1:
-                ax.set_xlabel("Turn", fontsize=10)
+                ax.set_title(f"{model} / {condition_label(condition)}")
+                style_axes(ax)
+                ax.legend(fontsize=7, loc='best', frameon=True,
+                          framealpha=0.9, edgecolor='#CCCCCC', fancybox=False)
+
+            if i == n_models_det - 1:
+                ax.set_xlabel("Turn")
             if j == 0:
-                ax.set_ylabel("Safety Score", fontsize=10)
-    
+                ax.set_ylabel("Safety Score")
+
     plt.tight_layout()
-    plt.savefig(output_path / "multiturn_degradation_detailed.png",
-                dpi=300, bbox_inches='tight')
-    plt.close()
+    fig.savefig(output_path / "multiturn_degradation_detailed.png",
+                dpi=FIGURE_DPI, bbox_inches='tight')
+    plt.close(fig)
     
     results_df = pd.DataFrame(results)
     return results_df

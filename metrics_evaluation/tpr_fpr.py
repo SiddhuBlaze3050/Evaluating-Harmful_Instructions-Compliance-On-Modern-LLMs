@@ -19,6 +19,19 @@ from sklearn.metrics import roc_curve, auc
 from typing import Dict, List, Tuple
 import matplotlib.pyplot as plt
 
+try:
+    from plot_style import (
+        style_axes, format_legend,
+        condition_color, condition_label,
+        FIGURE_DPI, FIG_SINGLE, LINE_WIDTH,
+    )
+except ImportError:
+    from metrics_evaluation.plot_style import (
+        style_axes, format_legend,
+        condition_color, condition_label,
+        FIGURE_DPI, FIG_SINGLE, LINE_WIDTH,
+    )
+
 
 def compute_tpr_at_fpr(y_true: np.ndarray, y_scores: np.ndarray, 
                        target_fpr: float = 0.01) -> Dict[str, float]:
@@ -119,38 +132,38 @@ def plot_roc_curve(y_true: np.ndarray, y_scores: np.ndarray,
     metrics = compute_tpr_at_fpr(y_true, y_scores, target_fpr)
     
     # Create plot
-    fig, ax = plt.subplots(figsize=(8, 6))
-    
+    fig, ax = plt.subplots(figsize=FIG_SINGLE)
+
     # Plot ROC curve
-    ax.plot(fpr, tpr, color='blue', lw=2, 
-            label=f'ROC curve (AUC = {roc_auc:.3f})')
-    
+    ax.plot(fpr, tpr, color='#1F77B4', lw=LINE_WIDTH,
+            label=f'ROC Curve (AUC = {roc_auc:.3f})')
+
     # Plot diagonal (random classifier)
-    ax.plot([0, 1], [0, 1], color='gray', lw=1, linestyle='--',
-            label='Random classifier')
-    
+    ax.plot([0, 1], [0, 1], color='#7F7F7F', lw=0.9, linestyle='--',
+            label='Random Classifier', alpha=0.7)
+
     # Highlight operating point
-    ax.scatter([metrics['fpr']], [metrics['tpr']], 
-              color='red', s=100, zorder=5,
-              label=f"TPR@{target_fpr:.1%}FPR = {metrics['tpr']:.1%}")
-    
-    # Add vertical/horizontal lines to operating point
-    ax.axvline(x=metrics['fpr'], color='red', linestyle=':', alpha=0.5)
-    ax.axhline(y=metrics['tpr'], color='red', linestyle=':', alpha=0.5)
-    
+    ax.scatter([metrics['fpr']], [metrics['tpr']],
+               color='#D62728', s=60, zorder=5,
+               label=f"TPR@{target_fpr:.1%} FPR = {metrics['tpr']:.1%}")
+
+    # Guide lines to operating point
+    ax.axvline(x=metrics['fpr'], color='#D62728', linestyle=':', lw=0.8, alpha=0.5)
+    ax.axhline(y=metrics['tpr'], color='#D62728', linestyle=':', lw=0.8, alpha=0.5)
+
     # Labels and formatting
-    ax.set_xlabel('False Positive Rate (FPR)', fontsize=12)
-    ax.set_ylabel('True Positive Rate (TPR)', fontsize=12)
-    ax.set_title(f'ROC Curve: {model_name} ({condition})', fontsize=14)
-    ax.legend(loc='lower right', fontsize=10)
-    ax.grid(alpha=0.3)
+    ax.set_xlabel('False Positive Rate (FPR)')
+    ax.set_ylabel('True Positive Rate (TPR)')
+    ax.set_title(f'ROC Curve \u2014 {model_name} ({condition.title()})')
     ax.set_xlim([0, 1])
     ax.set_ylim([0, 1])
-    
+    style_axes(ax, grid='both')
+    format_legend(ax, loc='lower right')
+
     plt.tight_layout()
-    
+
     if save_path:
-        fig.savefig(save_path, dpi=300, bbox_inches='tight')
+        fig.savefig(save_path, dpi=FIGURE_DPI, bbox_inches='tight')
         print(f"✓ Saved ROC curve to: {save_path}")
     
     return fig
@@ -180,13 +193,7 @@ def compare_conditions_roc(results_dict: Dict[str, Tuple[np.ndarray, np.ndarray]
         ... }
         >>> fig = compare_conditions_roc(results, "Gemini-2.5 Flash")
     """
-    fig, ax = plt.subplots(figsize=(10, 7))
-    
-    colors = {
-        'baseline': '#e74c3c',      # Red
-        'safedecoding': '#3498db',  # Blue
-        'llamaguard3': '#2ecc71'    # Green
-    }
+    fig, ax = plt.subplots(figsize=FIG_SINGLE)
     
     for condition, (y_true, y_scores) in results_dict.items():
         # Compute ROC curve
@@ -196,34 +203,34 @@ def compare_conditions_roc(results_dict: Dict[str, Tuple[np.ndarray, np.ndarray]
         # Find TPR at target FPR
         metrics = compute_tpr_at_fpr(y_true, y_scores, target_fpr)
         
-        color = colors.get(condition, 'gray')
-        
+        color = condition_color(condition)
+
         # Plot ROC curve
-        ax.plot(fpr, tpr, lw=2, color=color,
-                label=f'{condition.title()} (AUC={roc_auc:.3f}, '
-                      f'TPR@{target_fpr:.1%}FPR={metrics["tpr"]:.1%})')
+        ax.plot(fpr, tpr, lw=LINE_WIDTH, color=color,
+                label=f'{condition_label(condition)} (AUC={roc_auc:.3f}, '
+                      f'TPR@{target_fpr:.1%} FPR={metrics["tpr"]:.1%})')
         
         # Highlight operating point
-        ax.scatter([metrics['fpr']], [metrics['tpr']], 
-                  color=color, s=80, zorder=5)
-    
-    # Plot diagonal
-    ax.plot([0, 1], [0, 1], color='gray', lw=1, linestyle='--',
-            label='Random classifier', alpha=0.5)
-    
+        ax.scatter([metrics['fpr']], [metrics['tpr']],
+                   color=color, s=50, zorder=5, marker='^')
+
+    # Diagonal — random classifier baseline
+    ax.plot([0, 1], [0, 1], color='#7F7F7F', lw=0.9, linestyle='--',
+            label='Random Classifier', alpha=0.7)
+
     # Labels and formatting
-    ax.set_xlabel('False Positive Rate (FPR)', fontsize=12)
-    ax.set_ylabel('True Positive Rate (TPR)', fontsize=12)
-    ax.set_title(f'ROC Comparison: {model_name}', fontsize=14, fontweight='bold')
-    ax.legend(loc='lower right', fontsize=10)
-    ax.grid(alpha=0.3)
+    ax.set_xlabel('False Positive Rate (FPR)')
+    ax.set_ylabel('True Positive Rate (TPR)')
+    ax.set_title(f'ROC Comparison \u2014 {model_name}')
     ax.set_xlim([0, 1])
     ax.set_ylim([0, 1])
-    
+    style_axes(ax, grid='both')
+    format_legend(ax, loc='lower right')
+
     plt.tight_layout()
-    
+
     if save_path:
-        fig.savefig(save_path, dpi=300, bbox_inches='tight')
+        fig.savefig(save_path, dpi=FIGURE_DPI, bbox_inches='tight')
         print(f"✓ Saved comparison ROC curve to: {save_path}")
     
     return fig

@@ -18,6 +18,24 @@ import seaborn as sns
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 
+try:
+    from adjustText import adjust_text as _adjust_text
+except ImportError:
+    _adjust_text = None
+
+try:
+    from plot_style import (
+        style_axes, format_legend,
+        condition_color, condition_marker, condition_label, short_model_name,
+        FIGURE_DPI, FIG_SCATTER, LINE_WIDTH, FONT_SIZE_ANNOT, FONT_SIZE_LEGEND,
+    )
+except ImportError:
+    from metrics_evaluation.plot_style import (
+        style_axes, format_legend,
+        condition_color, condition_marker, condition_label, short_model_name,
+        FIGURE_DPI, FIG_SCATTER, LINE_WIDTH, FONT_SIZE_ANNOT, FONT_SIZE_LEGEND,
+    )
+
 
 def compute_safety_utility_metrics(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -125,22 +143,9 @@ def plot_safety_utility_frontier(df: pd.DataFrame,
     Returns:
         matplotlib Figure object
     """
-    fig, ax = plt.subplots(figsize=(12, 8))
-    
-    # Color schemes
-    condition_colors = {
-        'baseline': '#E74C3C',      # Red
-        'safedecoding': '#3498DB',  # Blue
-        'llamaguard3': '#2ECC71',   # Green
-        'guardrail': '#2ECC71'      # Green (alias)
-    }
-    
-    condition_markers = {
-        'baseline': 'o',
-        'safedecoding': 's',
-        'llamaguard3': '^',
-        'guardrail': '^'
-    }
+    fig, ax = plt.subplots(figsize=FIG_SCATTER)
+
+    # Use shared palettes from plot_style
     
     # Identify Pareto optimal points
     df = identify_pareto_optimal(df, safety_col, utility_col)
@@ -151,42 +156,46 @@ def plot_safety_utility_frontier(df: pd.DataFrame,
     for group_val in groups:
         subset = df[df[group_by] == group_val]
         
-        color = condition_colors.get(group_val, 'gray')
-        marker = condition_markers.get(group_val, 'o')
+        color = condition_color(group_val)
+        marker = condition_marker(group_val)
+        lbl   = condition_label(group_val)
         
         # Plot points
         ax.scatter(
             subset[utility_col],
             subset[safety_col],
-            label=group_val.upper(),
+            label=lbl,
             color=color,
             marker=marker,
-            s=150,
-            alpha=0.7,
-            edgecolors='black',
-            linewidths=1.5
+            s=120,
+            alpha=0.85,
+            edgecolors='white',
+            linewidths=0.8,
+            zorder=3,
         )
         
-        # Add model labels
+    # Collect text objects for auto-adjustment
+    all_texts = []
+    all_x, all_y = [], []
+
+    for group_val in groups:
+        subset = df[df[group_by] == group_val]
         for _, row in subset.iterrows():
-            # Offset label slightly
-            offset_x = 0.02
-            offset_y = 0.02
-            
-            label_text = row['model']
+            label_text = short_model_name(row['model'])
             if row['is_pareto_optimal']:
-                label_text = f"★ {label_text}"  # Star for Pareto optimal
-            
-            ax.annotate(
-                label_text,
-                (row[utility_col], row[safety_col]),
-                xytext=(offset_x, offset_y),
-                textcoords='offset points',
-                fontsize=9,
-                fontweight='bold' if row['is_pareto_optimal'] else 'normal',
-                bbox=dict(boxstyle='round,pad=0.3', 
-                         facecolor='yellow' if row['is_pareto_optimal'] else 'white',
-                         alpha=0.7, edgecolor='black', linewidth=0.5)
+                label_text = f"\u2605 {label_text}"  # Star for Pareto optimal
+
+            all_x.append(row[utility_col])
+            all_y.append(row[safety_col])
+            all_texts.append(
+                ax.text(
+                    row[utility_col], row[safety_col], label_text,
+                    fontsize=FONT_SIZE_ANNOT,
+                    fontweight='bold' if row['is_pareto_optimal'] else 'normal',
+                    bbox=dict(boxstyle='round,pad=0.3',
+                             facecolor='#FFF9C4' if row['is_pareto_optimal'] else 'white',
+                             alpha=0.85, edgecolor='#CCCCCC', linewidth=0.5)
+                )
             )
     
     # Highlight Pareto frontier
@@ -215,40 +224,45 @@ def plot_safety_utility_frontier(df: pd.DataFrame,
                      alpha=0.1, color='green', label='Ideal Region')
     
     # Labels and formatting
-    ax.set_xlabel("Utility (Benign Prompts) →", fontsize=14, fontweight='bold')
-    ax.set_ylabel("Safety (1 - StrongREJECT on Harmful) →", fontsize=14, fontweight='bold')
-    ax.set_title("Safety-Utility Pareto Frontier\nBalancing Safety and Model Capability", 
-                 fontsize=16, fontweight='bold', pad=20)
-    
+    ax.set_xlabel("Utility (Benign Prompts) \u2192")
+    ax.set_ylabel("Safety (Harmful Refusal Rate) \u2192")
+    ax.set_title("Safety\u2013Utility Pareto Frontier")
+
     # Set axis limits with padding
     ax.set_xlim(-0.05, 1.05)
     ax.set_ylim(-0.05, 1.05)
-    
-    # Grid
-    ax.grid(True, alpha=0.3, linestyle=':', linewidth=0.8)
-    
-    # Legend
-    ax.legend(loc='lower left', fontsize=10, framealpha=0.9)
-    
-    # Add interpretation text
+
+    # Spine / grid cleanup
+    style_axes(ax, grid='both')
+    format_legend(ax, loc='lower left')
+
+    # Auto-repel labels so they don't overlap
+    if _adjust_text is not None and all_texts:
+        _adjust_text(all_texts, x=all_x, y=all_y, ax=ax,
+                     arrowprops=dict(arrowstyle='-', color='#999999', lw=0.5),
+                     expand=(1.5, 1.5), force_text=(0.8, 0.8))
+
+    # Interpretation note
     interpretation = (
-        "★ = Pareto Optimal (not dominated by any other point)\n"
-        "Ideal models: Top-right (high safety + high utility)\n"
-        f"Best tradeoff: Pareto frontier points"
+        "\u2605 = Pareto Optimal\n"
+        "Ideal: top-right corner\n"
+        "(high safety + high utility)"
     )
     ax.text(0.02, 0.98, interpretation,
             transform=ax.transAxes,
-            fontsize=9,
+            fontsize=FONT_SIZE_ANNOT,
             verticalalignment='top',
-            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
-    
+            linespacing=1.4,
+            bbox=dict(boxstyle='round,pad=0.4', facecolor='white',
+                     alpha=0.85, edgecolor='#CCCCCC', linewidth=0.6))
+
     plt.tight_layout()
-    
+
     # Save if path provided
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"✓ Saved safety-utility frontier to: {save_path}")
-    
+        plt.savefig(save_path, dpi=FIGURE_DPI, bbox_inches='tight')
+        print(f"\u2713 Saved safety-utility frontier to: {save_path}")
+
     return fig
 
 
@@ -271,63 +285,74 @@ def plot_condition_comparison(df: pd.DataFrame,
     models = df['model'].unique()
     n_models = len(models)
     
-    fig, axes = plt.subplots(1, n_models, figsize=(6*n_models, 5), sharey=True)
-    
+    fig, axes = plt.subplots(1, n_models,
+                             figsize=(max(5.0, 4.5 * n_models), 4.5),
+                             sharey=True)
+
     if n_models == 1:
         axes = [axes]
-    
-    condition_colors = {
-        'baseline': '#E74C3C',
-        'safedecoding': '#3498DB',
-        'llamaguard3': '#2ECC71'
-    }
     
     for idx, model in enumerate(models):
         ax = axes[idx]
         model_data = df[df['model'] == model]
-        
+
+        panel_texts = []
+        panel_x, panel_y = [], []
+
         for _, row in model_data.iterrows():
-            color = condition_colors.get(row['condition'], 'gray')
-            
+            color = condition_color(row['condition'])
+
             ax.scatter(
                 row[utility_col],
                 row[safety_col],
                 color=color,
-                s=200,
-                alpha=0.7,
-                edgecolors='black',
-                linewidths=2,
-                label=row['condition'].upper()
+                s=140,
+                alpha=0.85,
+                edgecolors='white',
+                linewidths=0.8,
+                label=condition_label(row['condition']),
+                zorder=3,
             )
-            
-            ax.annotate(
-                row['condition'],
-                (row[utility_col], row[safety_col]),
-                xytext=(5, 5),
-                textcoords='offset points',
-                fontsize=9
+
+            panel_x.append(row[utility_col])
+            panel_y.append(row[safety_col])
+            panel_texts.append(
+                ax.text(row[utility_col], row[safety_col],
+                        condition_label(row['condition']),
+                        fontsize=FONT_SIZE_ANNOT)
             )
-        
-        ax.set_xlabel("Utility", fontsize=12)
+
+        ax.set_xlabel("Utility")
         if idx == 0:
-            ax.set_ylabel("Safety", fontsize=12)
-        ax.set_title(model, fontsize=13, fontweight='bold')
-        ax.grid(True, alpha=0.3)
+            ax.set_ylabel("Safety")
+        ax.set_title(model, fontweight='bold')
         ax.set_xlim(-0.05, 1.05)
         ax.set_ylim(-0.05, 1.05)
-        
+        style_axes(ax, grid='both')
+
+        # Auto-repel labels within this panel
+        if _adjust_text is not None and panel_texts:
+            _adjust_text(panel_texts, x=panel_x, y=panel_y, ax=ax,
+                         arrowprops=dict(arrowstyle='-', color='#999999', lw=0.5),
+                         expand=(1.4, 1.4), force_text=(0.6, 0.6))
+
         # Remove duplicate legend entries
-        handles, labels = ax.get_legend_handles_labels()
-        by_label = dict(zip(labels, handles))
-        ax.legend(by_label.values(), by_label.keys(), loc='lower left', fontsize=9)
+        handles, labels_list = ax.get_legend_handles_labels()
+        by_label = dict(zip(labels_list, handles))
+        legend = ax.legend(by_label.values(), by_label.keys(),
+                           loc='lower left', fontsize=FONT_SIZE_LEGEND,
+                           frameon=True, framealpha=0.9, edgecolor='#CCCCCC',
+                           fancybox=False)
+        if legend:
+            legend.get_frame().set_linewidth(0.6)
     
-    plt.suptitle("Safety-Utility Tradeoff by Model", fontsize=16, fontweight='bold', y=1.02)
-    plt.tight_layout()
-    
+    plt.tight_layout(rect=[0, 0, 1, 0.93])
+    fig.suptitle("Safety\u2013Utility Tradeoff by Model", fontweight='bold', y=0.98)
+
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"✓ Saved condition comparison to: {save_path}")
-    
+        plt.savefig(save_path, dpi=FIGURE_DPI, bbox_inches='tight')
+        print(f"\u2713 Saved condition comparison to: {save_path}")
+
     return fig
 
 

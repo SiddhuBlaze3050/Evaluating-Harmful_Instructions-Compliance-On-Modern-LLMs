@@ -206,6 +206,10 @@ if __name__ == "__main__":
     harmful_benign_results = []  # For harmful & benign prompts
     multiturn_results = []       # For multi-turn degradation analysis
     
+    # Output file paths (defined upfront to avoid scope issues)
+    output_file_1 = "results/evaluation_harmful_benign_analysis.csv"
+    output_file_2 = "results/evaluation_multi_turn_analysis.csv"
+    
     # ========================================================================
     # GEMINI 2.5 FLASH EVALUATIONS
     # ========================================================================
@@ -239,6 +243,12 @@ if __name__ == "__main__":
         })
         harmful_benign_results.append(results)
         
+        # Intermediate save for crash recovery
+        pd.concat(harmful_benign_results, ignore_index=True).to_csv(
+            "results/evaluation_harmful_benign_analysis_partial.csv", index=False
+        )
+        print("  [CHECKPOINT] Saved partial harmful/benign results")
+        
         # Multi-turn degradation analysis
         multiturn_df = run_multiturn_evaluation_pipeline(
             prompts_df=prompts_df,
@@ -248,6 +258,10 @@ if __name__ == "__main__":
         )
         if len(multiturn_df) > 0:
             multiturn_results.append(multiturn_df)
+            pd.concat(multiturn_results, ignore_index=True).to_csv(
+                "results/evaluation_multi_turn_analysis_partial.csv", index=False
+            )
+            print("  [CHECKPOINT] Saved partial multi-turn results")
         
     except Exception as e:
         print(f"❌ Error: {e}")
@@ -282,6 +296,12 @@ if __name__ == "__main__":
         })
         harmful_benign_results.append(results)
         
+        # Intermediate save for crash recovery
+        pd.concat(harmful_benign_results, ignore_index=True).to_csv(
+            "results/evaluation_harmful_benign_analysis_partial.csv", index=False
+        )
+        print("  [CHECKPOINT] Saved partial harmful/benign results")
+        
         # Multi-turn degradation analysis
         multiturn_df = run_multiturn_evaluation_pipeline(
             prompts_df=prompts_df,
@@ -291,6 +311,10 @@ if __name__ == "__main__":
         )
         if len(multiturn_df) > 0:
             multiturn_results.append(multiturn_df)
+            pd.concat(multiturn_results, ignore_index=True).to_csv(
+                "results/evaluation_multi_turn_analysis_partial.csv", index=False
+            )
+            print("  [CHECKPOINT] Saved partial multi-turn results")
         
     except Exception as e:
         print(f"❌ Error: {e}")
@@ -324,6 +348,12 @@ if __name__ == "__main__":
         })
         harmful_benign_results.append(results)
         
+        # Intermediate save for crash recovery
+        pd.concat(harmful_benign_results, ignore_index=True).to_csv(
+            "results/evaluation_harmful_benign_analysis_partial.csv", index=False
+        )
+        print("  [CHECKPOINT] Saved partial harmful/benign results")
+        
         # Multi-turn degradation analysis
         multiturn_df = run_multiturn_evaluation_pipeline(
             prompts_df=prompts_df,
@@ -333,6 +363,10 @@ if __name__ == "__main__":
         )
         if len(multiturn_df) > 0:
             multiturn_results.append(multiturn_df)
+            pd.concat(multiturn_results, ignore_index=True).to_csv(
+                "results/evaluation_multi_turn_analysis_partial.csv", index=False
+            )
+            print("  [CHECKPOINT] Saved partial multi-turn results")
         
     except Exception as e:
         print(f"❌ Error: {e}")
@@ -388,6 +422,12 @@ if __name__ == "__main__":
         })
         harmful_benign_results.append(results)
         
+        # Intermediate save for crash recovery
+        pd.concat(harmful_benign_results, ignore_index=True).to_csv(
+            "results/evaluation_harmful_benign_analysis_partial.csv", index=False
+        )
+        print("  [CHECKPOINT] Saved partial harmful/benign results")
+        
         # Multi-turn degradation analysis
         multiturn_df = run_multiturn_evaluation_pipeline(
             prompts_df=prompts_df,
@@ -397,6 +437,10 @@ if __name__ == "__main__":
         )
         if len(multiturn_df) > 0:
             multiturn_results.append(multiturn_df)
+            pd.concat(multiturn_results, ignore_index=True).to_csv(
+                "results/evaluation_multi_turn_analysis_partial.csv", index=False
+            )
+            print("  [CHECKPOINT] Saved partial multi-turn results")
         
     except Exception as e:
         print(f"❌ Error: {e}")
@@ -431,6 +475,12 @@ if __name__ == "__main__":
         })
         harmful_benign_results.append(results)
         
+        # Intermediate save for crash recovery
+        pd.concat(harmful_benign_results, ignore_index=True).to_csv(
+            "results/evaluation_harmful_benign_analysis_partial.csv", index=False
+        )
+        print("  [CHECKPOINT] Saved partial harmful/benign results")
+        
         # Multi-turn degradation analysis
         multiturn_df = run_multiturn_evaluation_pipeline(
             prompts_df=prompts_df,
@@ -440,6 +490,10 @@ if __name__ == "__main__":
         )
         if len(multiturn_df) > 0:
             multiturn_results.append(multiturn_df)
+            pd.concat(multiturn_results, ignore_index=True).to_csv(
+                "results/evaluation_multi_turn_analysis_partial.csv", index=False
+            )
+            print("  [CHECKPOINT] Saved partial multi-turn results")
         
     except Exception as e:
         print(f"❌ Error: {e}")
@@ -473,6 +527,12 @@ if __name__ == "__main__":
         })
         harmful_benign_results.append(results)
         
+        # Intermediate save for crash recovery
+        pd.concat(harmful_benign_results, ignore_index=True).to_csv(
+            "results/evaluation_harmful_benign_analysis_partial.csv", index=False
+        )
+        print("  [CHECKPOINT] Saved partial harmful/benign results")
+        
         # Multi-turn degradation analysis
         multiturn_df = run_multiturn_evaluation_pipeline(
             prompts_df=prompts_df,
@@ -482,6 +542,10 @@ if __name__ == "__main__":
         )
         if len(multiturn_df) > 0:
             multiturn_results.append(multiturn_df)
+            pd.concat(multiturn_results, ignore_index=True).to_csv(
+                "results/evaluation_multi_turn_analysis_partial.csv", index=False
+            )
+            print("  [CHECKPOINT] Saved partial multi-turn results")
         
     except Exception as e:
         print(f"❌ Error: {e}")
@@ -537,6 +601,12 @@ if __name__ == "__main__":
         })
         harmful_benign_results.append(results)
         
+        # Intermediate save for crash recovery
+        pd.concat(harmful_benign_results, ignore_index=True).to_csv(
+            "results/evaluation_harmful_benign_analysis_partial.csv", index=False
+        )
+        print("  [CHECKPOINT] Saved partial harmful/benign results")
+        
         # Multi-turn degradation analysis
         multiturn_df = run_multiturn_evaluation_pipeline(
             prompts_df=prompts_df,
@@ -546,6 +616,10 @@ if __name__ == "__main__":
         )
         if len(multiturn_df) > 0:
             multiturn_results.append(multiturn_df)
+            pd.concat(multiturn_results, ignore_index=True).to_csv(
+                "results/evaluation_multi_turn_analysis_partial.csv", index=False
+            )
+            print("  [CHECKPOINT] Saved partial multi-turn results")
         
     except Exception as e:
         print(f"❌ Error: {e}")
@@ -580,6 +654,12 @@ if __name__ == "__main__":
         })
         harmful_benign_results.append(results)
         
+        # Intermediate save for crash recovery
+        pd.concat(harmful_benign_results, ignore_index=True).to_csv(
+            "results/evaluation_harmful_benign_analysis_partial.csv", index=False
+        )
+        print("  [CHECKPOINT] Saved partial harmful/benign results")
+        
         # Multi-turn degradation analysis
         multiturn_df = run_multiturn_evaluation_pipeline(
             prompts_df=prompts_df,
@@ -589,6 +669,10 @@ if __name__ == "__main__":
         )
         if len(multiturn_df) > 0:
             multiturn_results.append(multiturn_df)
+            pd.concat(multiturn_results, ignore_index=True).to_csv(
+                "results/evaluation_multi_turn_analysis_partial.csv", index=False
+            )
+            print("  [CHECKPOINT] Saved partial multi-turn results")
         
     except Exception as e:
         print(f"❌ Error: {e}")
@@ -622,6 +706,12 @@ if __name__ == "__main__":
         })
         harmful_benign_results.append(results)
         
+        # Intermediate save for crash recovery
+        pd.concat(harmful_benign_results, ignore_index=True).to_csv(
+            "results/evaluation_harmful_benign_analysis_partial.csv", index=False
+        )
+        print("  [CHECKPOINT] Saved partial harmful/benign results")
+        
         # Multi-turn degradation analysis
         multiturn_df = run_multiturn_evaluation_pipeline(
             prompts_df=prompts_df,
@@ -631,6 +721,10 @@ if __name__ == "__main__":
         )
         if len(multiturn_df) > 0:
             multiturn_results.append(multiturn_df)
+            pd.concat(multiturn_results, ignore_index=True).to_csv(
+                "results/evaluation_multi_turn_analysis_partial.csv", index=False
+            )
+            print("  [CHECKPOINT] Saved partial multi-turn results")
         
     except Exception as e:
         print(f"❌ Error: {e}")
@@ -670,12 +764,19 @@ if __name__ == "__main__":
             'response', 'strongreject_score', 'simple_refusal', 'response_length'
         ]
         
-        # Add any remaining columns
+        # Safe reorder: only include columns that actually exist
+        existing_cols = [col for col in column_order if col in final_harmful_benign.columns]
         remaining_cols = [col for col in final_harmful_benign.columns if col not in column_order]
-        final_harmful_benign = final_harmful_benign[column_order + remaining_cols]
+        final_harmful_benign = final_harmful_benign[existing_cols + remaining_cols]
         
         output_file_1 = "results/evaluation_harmful_benign_analysis.csv"
         final_harmful_benign.to_csv(output_file_1, index=False)
+        
+        # Clean up partial file
+        partial_hb = "results/evaluation_harmful_benign_analysis_partial.csv"
+        if os.path.exists(partial_hb):
+            os.remove(partial_hb)
+        
         print(f"✅ Saved harmful/benign analysis: {output_file_1}")
         print(f"   Total rows: {len(final_harmful_benign)}")
         print(f"   Models: {final_harmful_benign['model'].unique()}")
@@ -696,12 +797,19 @@ if __name__ == "__main__":
             'context_length', 'strongreject_score', 'simple_refusal', 'response_length'
         ]
         
-        # Add any remaining columns
+        # Safe reorder: only include columns that actually exist
+        existing_cols_mt = [col for col in column_order_mt if col in final_multiturn.columns]
         remaining_cols_mt = [col for col in final_multiturn.columns if col not in column_order_mt]
-        final_multiturn = final_multiturn[column_order_mt + remaining_cols_mt]
+        final_multiturn = final_multiturn[existing_cols_mt + remaining_cols_mt]
         
         output_file_2 = "results/evaluation_multi_turn_analysis.csv"
         final_multiturn.to_csv(output_file_2, index=False)
+        
+        # Clean up partial file
+        partial_mt = "results/evaluation_multi_turn_analysis_partial.csv"
+        if os.path.exists(partial_mt):
+            os.remove(partial_mt)
+        
         print(f"\n✅ Saved multi-turn analysis: {output_file_2}")
         print(f"   Total rows: {len(final_multiturn)}")
         print(f"   Conversations: {final_multiturn['conversation_id'].nunique()}")
@@ -714,6 +822,6 @@ if __name__ == "__main__":
     print("EVALUATION COMPLETE")
     print("="*80)
     print("✓ Two consolidated files generated:")
-    print(f"  1. {output_file_1 if harmful_benign_results else 'N/A'}")
-    print(f"  2. {output_file_2 if multiturn_results else 'N/A'}")
+    print(f"  1. {output_file_1 if harmful_benign_results else 'N/A (no results)'}")
+    print(f"  2. {output_file_2 if multiturn_results else 'N/A (no results)'}")
     print("\n📊 Ready for analysis and visualization!")

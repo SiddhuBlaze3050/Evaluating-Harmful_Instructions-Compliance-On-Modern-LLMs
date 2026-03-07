@@ -1,4 +1,0 @@
-condition,frr,ci_lower,ci_upper,ci_margin,n_benign,n_false_refusals,n_models,models_tested,confidence_level
-baseline,0.0,0.0,0.11351339317396876,0.05675669658698438,30,0,3,"Gemini-2.5 Flash, Llama-3.1-8B, Mistral-7B",0.95
-safedecoding,0.06666666666666667,0.018477023791270378,0.2132345836261692,0.09737877991744942,30,2,3,"Gemini-2.5 Flash, Llama-3.1-8B, Mistral-7B",0.95
-llamaguard3,0.1,0.03459988874733419,0.25621082579184085,0.11080546852225333,30,3,3,"Gemini-2.5 Flash, Llama-3.1-8B, Mistral-7B",0.95

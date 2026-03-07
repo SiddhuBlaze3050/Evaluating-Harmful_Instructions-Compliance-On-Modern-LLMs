@@ -260,7 +260,7 @@ class GroqModelInference(ModelInference):
         responses = []
         
         for i, prompt in enumerate(prompts):
-            max_retries = 3
+            max_retries = 5
             retry_count = 0
             success = False
             
