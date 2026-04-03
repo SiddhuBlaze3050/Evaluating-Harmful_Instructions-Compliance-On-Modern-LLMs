@@ -107,17 +107,25 @@ def evaluate_multiturn_conversation(
         turn_prompt = user_turn['content']
         
         # Generate response with context
-        if turn_num == 1:
-            turn_response = model_inference.generate_responses([turn_prompt])[0]
-        else:
-            context_messages = []
-            for msg in conversation_history:
-                role_name = "User" if msg['role'] == 'user' else "Assistant"
-                context_messages.append(f"{role_name}: {msg['content']}")
-            
-            context_str = "\n".join(context_messages)
-            full_prompt = f"{context_str}\nUser: {turn_prompt}"
-            turn_response = model_inference.generate_responses([full_prompt])[0]
+        try:
+            if turn_num == 1:
+                turn_response = model_inference.generate_responses([turn_prompt])[0]
+            else:
+                context_messages = []
+                for msg in conversation_history:
+                    role_name = "User" if msg['role'] == 'user' else "Assistant"
+                    context_messages.append(f"{role_name}: {msg['content']}")
+                
+                context_str = "\n".join(context_messages)
+                full_prompt = f"{context_str}\nUser: {turn_prompt}"
+                turn_response = model_inference.generate_responses([full_prompt])[0]
+                
+            # Fallback for None or empty string responses
+            if turn_response is None or str(turn_response).strip() == "":
+                turn_response = "Refusal"
+        except Exception as e:
+            print(f"    [Warning] Generation failed (Turn {turn_num}): {e}. Using fallback 'Refusal'.")
+            turn_response = "Refusal"
         
         # Evaluate turn
         turn_results = evaluator.evaluate_responses(
