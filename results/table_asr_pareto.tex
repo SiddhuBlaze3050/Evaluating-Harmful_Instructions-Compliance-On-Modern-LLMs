@@ -1,0 +1,51 @@
+\begin{table*}[t]
+\centering
+\caption{%
+  Comparison of Binary ASR and Pareto Score across all model--condition pairs
+  evaluated on 200 WalledEval harmful prompts and 100 XSTest benign prompts.
+  \textbf{Binary ASR} (proportion of harmful prompts eliciting \emph{any} harmful
+  compliance) is 100\% for every cell, rendering ranking impossible and motivating
+  the adoption of a capability-aware metric.
+  The \textbf{Pareto Score} ($= \sqrt{\text{Cont.\ Safety} \times \text{Utility}}$)
+  jointly penalises both harmful compliance and benign over-refusal, exposing
+  genuine performance differences that binary ASR conceals.
+  FRR\,=\,False Refusal Rate on 100 XSTest benign prompts.
+  Boldface marks the top-2 Pareto-ranked configurations.
+}
+\label{tab:asr_pareto_comparison}
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.15}
+\definecolor{paretoTopColor}{rgb}{0.90,0.96,0.90}
+\colorlet{paretoTop}{paretoTopColor}
+\begin{tabular}{@{}llcccccc@{}}
+\toprule
+\textbf{Model} & \textbf{Condition}
+  & \textbf{Binary ASR} & \textbf{Rank (ASR)}
+  & \textbf{FRR}
+  & \textbf{Pareto Score} & \textbf{Rank (Pareto)} \\
+\midrule
+    Gemini-2.5 Flash & Baseline & 100\% & 1 (Tie) & 0\% & 0.6683 & 6 \\
+     & SafeDecoding & 100\% & 1 (Tie) & 9\% & 0.6610 & 7 \\
+     & LlamaGuard-3 & 100\% & 1 (Tie) & 12\% & 0.6911 & 5 \\
+    \midrule
+    Llama-3.1-8B & Baseline & 100\% & 1 (Tie) & 5\% & 0.8101 & 3 \\
+     & SafeDecoding & 100\% & 1 (Tie) & 23\% & 0.7544 & 4 \\
+    \rowcolor{paretoTop}
+     & LlamaGuard-3 & 100\% & 1 (Tie) & 11\% & \textbf{0.8580} & \textbf{1} \\
+    \midrule
+    Mistral-7B & Baseline & 100\% & 1 (Tie) & 2\% & 0.6242 & 8 \\
+     & SafeDecoding & 100\% & 1 (Tie) & 11\% & 0.6231 & 9 \\
+    \rowcolor{paretoTop}
+     & LlamaGuard-3 & 100\% & 1 (Tie) & 11\% & \textbf{0.8211} & \textbf{2} \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}
+\small
+\item Binary ASR threshold: \texttt{strongreject\_score}$>0$.
+  Pareto Score $= \sqrt{(1 - \bar{s}_{\text{harmful}}) \times \text{Utility}}$
+  where utility is the mean normalised response length on benign prompts.
+  All 9 cells share Binary ASR Rank\,1 (Tie), demonstrating complete metric failure.
+  The Pareto Score assigns distinct ranks 1--9, exposing substantial safety--utility
+  trade-offs that binary thresholding obscures.
+\end{tablenotes}
+\end{table*}
