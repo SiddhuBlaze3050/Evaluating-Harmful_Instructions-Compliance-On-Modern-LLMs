@@ -26,15 +26,15 @@
 \maketitle
 
 \begin{abstract}
-As Large Language Models (LLMs) are increasingly deployed in complex, conversational environments, sophisticated multi-turn jailbreaks have exposed the fragility of traditional alignment methods. Although modern defense mechanisms such as inference-time decoding interventions and external guardrail classifiers can offer robust protection against isolated attacks, their evaluation is frequently flawed. Traditional binary Attack Success Rate (ASR) metrics fail to penalize capability degradation, inadvertently rewarding "Exaggerated Safety" where models simply refuse benign, complex requests. Furthermore, these defenses are rarely evaluated against compounding multi-turn adversarial context. We present a capability-aware evaluation framework using the StrongREJECT autograder to score harmful compliance on a continuous scale ($s \in [0,1]$, lower indicates safer behavior) and report an interpretable safety signal as $\text{safety} = 1 - s$, enabling joint assessment of safety and utility preservation under Baseline, SafeDecoding, and LlamaGuard-3 across three model families (Llama-3.1-8B, Mistral-7B, Gemini-2.5 Flash). We evaluate 356 instances spanning WalledEval harmful prompts, XSTest benign prompts, and CoSafe multi-turn scenarios. The results reveal a clear safety--utility tradeoff: while LlamaGuard-3 achieves the highest harmful-vs-benign separability (AUC 0.916--0.942), it increases benign over-refusal (FRR 2.3\% $\rightarrow$ 11.3\%). Multi-turn evaluation further shows turn-wise drift in StrongREJECT scores over three turns, and the direction of drift depends on both the model family and the defense condition. Together, these findings show that refusal-only metrics can produce false safety, and that multi-turn statefulness should be treated as a primary evaluation criterion for real-world deployments.
+As Large Language Models (LLMs) are increasingly deployed in conversational environments, multi-turn jailbreaks have exposed the fragility of standard alignment methods. Although inference-time heuristic wrappers and external guardrail classifiers offer protection against isolated attacks, their evaluation is frequently flawed. Traditional binary Attack Success Rate (ASR) metrics fail to penalize capability degradation, inadvertently rewarding ``Exaggerated Safety'' where models refuse benign, lexically sensitive requests. We present a capability-aware evaluation framework using the StrongREJECT autograder to score harmful compliance on a continuous scale ($s \in [0,1]$, lower indicates safer behavior) and report an interpretable safety signal $S = 1 - s$, enabling joint assessment of safety and utility preservation under Baseline, a black-box SafeDecoding approximation, and LlamaGuard-3 across three model families (Llama-3.1-8B, Mistral-7B, Gemini-2.5 Flash). Evaluating $356$ instances across WalledEval ($200$ harmful), XSTest ($100$ benign), and CoSafe ($56$ three-turn adversarial dialogues), we show that binary ASR produces a $100.0\%$ nine-way tie across all configurations, whereas our capability-aware Pareto Score alters defense rankings once benign False Refusal Rate (FRR) and strict low-false-positive recall ($\text{TPR@1\%FPR}$) are accounted for. While LlamaGuard-3 achieves the highest global separability ($\text{AUC } 0.916\text{--}0.942$) and boosts $\text{TPR@1\%FPR}$ on weaker baselines (Llama-3.1-8B: $8.5\% \rightarrow 31.0\%$; Mistral-7B: $0.0\% \rightarrow 14.5\%$), it increases mean FRR from $2.3\%$ to $11.3\%$ (vs.\ $14.3\%$ under SafeDecoding) and reduces $\text{TPR@1\%FPR}$ on strongly aligned Gemini-2.5 Flash from $52.0\%$ (Baseline) to $13.0\%$. Multi-turn evaluation over three turns further reveals model- and defense-dependent StrongREJECT score drift, with Llama-3.1-8B ($\Delta = -0.100$) and Mistral-7B ($\Delta = -0.021$) becoming more conservative while Gemini-2.5 Flash exhibits marginal upward drift ($\Delta = +0.024$). Together, these results demonstrate that refusal-only metrics obscure critical operational trade-offs across both single- and multi-turn deployments.
 \end{abstract}
 
 \section{Introduction}
 \label{sec:introduction}
 
-The rapid deployment of Large Language Models (LLMs) has necessitated advanced alignment methods to ensure safe and reliable interactions. Training paradigms to instill safety values into the model's weights have evolved significantly; for instance, Direct Preference Optimization (DPO) has emerged as a stable alternative to traditional reinforcement learning, optimizing the model directly on preference data without needing a separate reward model. However, as these alignment methods have progressed, so have the methods used to bypass safety alignment, evolving from static human-crafted prompt templates to highly adaptive and multi-turn strategies \cite{wei2023jailbroken}.
+The rapid deployment of Large Language Models (LLMs) requires advanced alignment methods to ensure safe and reliable interactions. Training paradigms to instill safety values into the model's weights have evolved significantly; for instance, Direct Preference Optimization (DPO) has emerged as a stable alternative to traditional reinforcement learning, optimizing the model directly on preference data without needing a separate reward model. However, as these alignment methods have progressed, so have the methods used to bypass safety alignment, evolving from static human-crafted prompt templates to highly adaptive and multi-turn strategies \cite{wei2023jailbroken}.
 
-To counter these sophisticated threats, modern defense mechanisms have bifurcated into two primary paradigms: deep internal interventions and plug-and-play inference controls. While representation engineering techniques like Circuit Breakers actively reroute activations within the model's residual stream, they require invasive access to internal states. Consequently, production environments increasingly rely on inference-time modifications (such as SafeDecoding) or external classifier guardrails (like LlamaGuard-3) that can be wrapped around any baseline model.
+To counter these sophisticated threats, modern defense mechanisms generally fall into two categories: deep internal interventions and plug-and-play inference controls. While representation engineering techniques like Circuit Breakers actively reroute activations within the model's residual stream, they require invasive access to internal states. Consequently, production environments increasingly rely on inference-time modifications (such as SafeDecoding) or external classifier guardrails (like LlamaGuard-3) that can be wrapped around any baseline model.
 
 In this work, we focus on deployable inference-time wrappers like SafeDecoding and LlamaGuard-3 because they can be applied to both open-weights and API-access models without retraining or modifying model weights. Internal representation interventions (e.g., circuit breakers) motivate the modern safety landscape, but are treated as contextual baselines rather than the primary experimental variable in this study.
 
@@ -45,7 +45,7 @@ Despite these advancements in defense architectures, traditional evaluation metr
 
 Moreover, traditional evaluation is frequently single-turn and point-in-time prompts are treated as independent events, even though real deployments are conversational. This assumption breaks under multi-turn jailbreaks, where adversarial intent is distributed across turns and the model's behavior can drift as context accumulates. As a result, single-turn ASR-style reporting can miss session-level failures (or refusal cascades) that only appear when the full conversation history is considered.
 
-A critical limitation of these traditional approaches is their failure to account for "Exaggerated Safety" \cite{rottger2023xstest}, situations where a model incorrectly refuses benign or safe prompts. Recent work has proposed contrastive refinement strategies to mitigate such over-refusal without sacrificing safety \cite{discerntruth2026}. High False Refusal Rates (FRR) indicate that a model has become overly conservative, leading to significant capability degradation. Consequently, traditional evaluation can yield "false safety" scores, rewarding models that simply refuse all complex requests rather than those that maintain their general intelligence and utility after a safety defense is applied.
+A critical limitation of these traditional approaches is their failure to account for ``Exaggerated Safety'' \cite{rottger2023xstest}, situations where a model incorrectly refuses benign or safe prompts. Recent work has proposed contrastive refinement strategies to mitigate such over-refusal without sacrificing safety \cite{discerntruth2026}. High False Refusal Rates (FRR) indicate that a model has become overly conservative, leading to significant capability degradation. Consequently, traditional evaluation can yield ``false safety'' scores, rewarding models that simply refuse all complex requests rather than those that maintain their general intelligence and utility after a safety defense is applied.
 
 \begin{figure*}[t]
     \centering
@@ -74,7 +74,7 @@ To address these questions, this paper makes the following contributions:
 \begin{itemize}
     \item \textbf{A Reproducible Evaluation Pipeline:} We introduce a unified framework that pairs harmful prompt sourcing (WalledEval), benign over-refusal testing (XSTest), and multi-turn scenarios (CoSafe) with capability-aware StrongREJECT scoring. Code and artifacts are available at \href{https://github.com/SiddhuBlaze3050/Evaluating-Harmful_Instructions-Compliance-On-Modern-LLMs}{our GitHub repository}.
     \item \textbf{A Multi-Metric Tradeoff Analysis:} We provide a comprehensive comparison across three model families and three defense conditions, reporting AUC, TPR@1\%FPR, False Refusal Rates, and mapping a safety--utility Pareto frontier.
-    \item \textbf{Multi-Turn Degradation Measurement:} We conduct a temporal analysis measuring turn-wise drift in StrongREJECT scores. Our findings reveal that conversational state systematically alters the safety signal over time, proving that point-in-time evaluations are insufficient.
+    \item \textbf{Multi-Turn Drift Analysis:} We conduct a three-turn temporal analysis on CoSafe conversations measuring turn-wise changes in StrongREJECT compliance scores ($\Delta = -0.100$ on Llama-3.1-8B, $-0.021$ on Mistral-7B, and $+0.024$ on Gemini-2.5 Flash). We observe turn-wise drift that varies by model family and defense condition; evaluating over longer conversation horizons is needed to confirm these trends.
 \end{itemize}
 
 \textbf{Paper organization.} Section~\ref{sec:related_work} reviews prior work on defenses and evaluation. Section~\ref{sec:methodology} describes the dataset suite, experimental conditions, and metrics. Section~\ref{sec:results} presents single-turn and multi-turn results, and Section~\ref{sec:discussion} discusses practical implications for deployment.
@@ -82,21 +82,21 @@ To address these questions, this paper makes the following contributions:
 \section{Related Work}
 \label{sec:related_work}
 
-The landscape of safety alignment for Large Language Models (LLMs) has undergone a rapid paradigm shift, evolving from static post-hoc filtering to dynamic internal interventions and multi-turn adversarial evaluations. This section reviews the critical literature across modern defense mechanisms, the shift toward capability-aware evaluation frameworks, and the emerging challenges of multi-turn safety research.
+Safety alignment for Large Language Models (LLMs) has evolved from static post-hoc filtering to dynamic internal interventions and multi-turn adversarial evaluations. This section reviews the critical literature across modern defense mechanisms, the shift toward capability-aware evaluation frameworks, and the emerging challenges of multi-turn safety research.
 
 \subsection{Modern Defense Mechanisms}
 Early approaches to LLM safety heavily relied on prompt rewriting or supervised refusal fine-tuning, which often proved brittle against sophisticated jailbreaks. Recently, research has pivoted toward deep structural interventions and dynamic moderation. For example, \textit{SafeDecoding} \cite{xu2024safedecoding} introduced a safety-aware decoding strategy that explicitly amplifies latent safety signals during text generation, adjusting output probabilities at the token level without requiring extensive retraining. Similarly, \textit{Llamaguard} \cite{inan2023llamaguard, fedorov2024llama} represents a significant advancement in one-stop moderation, offering an open, lightweight model capable of detecting malicious intent, evaluating model responses, and accurately parsing refusal rates across diverse risk categories. Expanding on this external moderation paradigm, \textit{WildGuard} \cite{han2024wildguard} has also been introduced as an open-weight tool specifically optimized to distinguish complex adversarial jailbreaks from standard harmful requests, demonstrating the growing necessity of specialized safety classifiers. 
 
-Beyond these external guardrails, a profound shift in internal model defense has been driven by Representation Engineering \cite{zou2023representation}. Building on this foundation, Zou et al. \cite{zou2024improving} introduced \textit{Circuit Breakers}, which operate directly on the model's residual stream. 
+Beyond these external guardrails, internal model defenses increasingly rely on Representation Engineering \citep{zou2023representation}. Building on this foundation, Zou et al. \cite{zou2024improving} introduced \textit{Circuit Breakers}, which operate directly on the model's residual stream. 
 
 Rather than teaching the model to refuse a prompt post-generation, this technique utilizes Representation Rerouting (RR) to detect hidden states associated with harmful outputs and short-circuits them, remapping the activations to a safe, orthogonal space. This effectively stops the generation of harmful content at its root. However, while these static circuit breakers provide robust defense against isolated attacks, addressing the temporal accumulation of adversarial context necessitates a transition toward dynamic, state-aware mechanisms. Complementing these approaches, SAID \cite{said2025} introduces a prefix probing mechanism that detects adversarial intent at the input level, demonstrating that lightweight input-side interventions can complement generation-time and representation-level defenses.
 
 Recent work also emphasizes that safety systems should be compared at realistic operating points rather than by a single aggregate refusal score. In deployment, guardrails are typically tuned to a strict false-positive budget (e.g., 1\% FPR) and evaluated by the resulting recall of harmful content (TPR@FPR), while benign over-refusal is tracked explicitly on safe-but-triggering prompts (FRR). These practices shift evaluation away from ``did the model refuse?'' toward a multi-metric view of safety and utility, where improvements in harmful interception must be weighed against capability loss on benign requests.
 
 \subsection{Evaluation Frameworks: The Capability-Aware Paradigm}
-As defense architectures have matured, the metrics used to evaluate them have frequently lagged, often rewarding models that achieve "safety" by broadly refusing all complex requests; a phenomenon known as Exaggerated Safety. Traditional Attack Success Rate (ASR) metrics typically employ simplistic string matching or binary text classifiers, which severely overestimate a defense's success by failing to penalize capability degradation.
+As defense architectures have matured, the metrics used to evaluate them have frequently lagged, often rewarding models that achieve ``safety'' by broadly refusing all complex requests; a phenomenon known as Exaggerated Safety. Traditional Attack Success Rate (ASR) metrics typically employ simplistic string matching or binary text classifiers, which severely overestimate a defense's success by failing to penalize capability degradation.
 
-To rectify this, the field has moved toward capability-aware frameworks. The \textit{StrongREJECT} benchmark \cite{souly2024strongreject} addresses the flaws of binary refusal tracking by utilizing an automated evaluator that scores responses across multiple continuous dimensions: refusal, specificity, and convincingness. StrongREJECT ensures that models are not given false safety credits for partial, enthusiastic, or incoherent responses, explicitly separating true robustness from mere capability loss. This guarantees that defenses are evaluated not just on the attacks they successfully block, but on the general intelligence and utility they preserve.
+To rectify this, the field has moved toward capability-aware frameworks. The \textit{StrongREJECT} benchmark \cite{souly2024strongreject} addresses the flaws of binary refusal tracking by utilizing an automated evaluator that scores responses across multiple continuous dimensions: refusal, specificity, and convincingness. StrongREJECT ensures that models are not given false safety credits for partial, enthusiastic, or incoherent responses, explicitly separating true robustness from mere capability loss. This ensures that defenses are evaluated not just on the attacks they successfully block, but on the general intelligence and utility they preserve.
 
 This LLM-as-a-Judge paradigm, formalized by Zheng et al. \cite{zheng2023judging}, has become the dominant evaluation methodology for open-ended generation tasks. However, recent work has shown that safety benchmarks can be sensitive to judge configuration choices such as model selection, temperature, and prompt framing \cite{judgesensitivity2026}, and that adversarial formatting strategies like emoji-based obfuscation can degrade judge accuracy \cite{emojiattack2024}. Complementary standardized benchmarks, including HarmBench \cite{mazeika2024harmbench} and JailbreakBench \cite{jailbreakbench2024}, have further systematized red-teaming evaluation by providing controlled attack--defense comparison protocols.
 
@@ -105,16 +105,16 @@ Modern attack methodologies further motivate this shift. Optimization-based and 
 In operational settings, defenses are also compared at explicit operating points rather than by aggregate refusal alone. Guardrails are typically calibrated to a strict false-positive budget (e.g., 1\% FPR), and then evaluated by the resulting harmful-content recall (TPR@FPR), while benign over-refusal is tracked directly on safe-but-triggering prompts (FRR, e.g., via XSTest). Reporting safety--utility tradeoffs (e.g., Pareto frontiers) makes these constraints explicit: improved harmful detection is only deployment-relevant if it does not induce unacceptable capability loss on benign traffic. Recognizing over-refusal as a measurable failure mode, recent inference-time methods have explored activation-energy-based interventions to selectively reduce false refusals without degrading safety \cite{els2025}.
 
 \subsection{Multi-Turn Safety and Contextual Vulnerabilities}
-The assumption that adversarial intent is delivered in a single, isolated prompt has been invalidated by real-world chatbot deployment. Attackers increasingly utilize multi-turn interactions, gradually escalating the conversation to induce harmful behavior. The \textit{TOXICCHAT} dataset \cite{lin2023toxicchat} highlighted this vulnerability by demonstrating that implicit jailbreaks and contextual shifts in multi-turn dialogue easily bypass standard toxicity filters. Their findings reveal a massive domain gap between explicit social media toxicity and the "polite" but harmful queries found in conversational environments. Building on this insight, Russinovich et al. introduced Crescendo \cite{russinovich2024crescendo}, a principled multi-turn jailbreak that incrementally escalates adversarial intent across turns, demonstrating that even models robust to single-turn attacks can be compromised through patient, multi-step interaction. The CoSafe benchmark \cite{yu2024cosafe} operationalizes this threat by providing curated multi-turn scenarios that exploit coreference and dialogue context to induce harmful compliance.
+The assumption that adversarial intent is delivered in a single, isolated prompt has been invalidated by real-world chatbot deployment. Attackers increasingly utilize multi-turn interactions, gradually escalating the conversation to induce harmful behavior. The \textit{TOXICCHAT} dataset \cite{lin2023toxicchat} highlighted this vulnerability by demonstrating that implicit jailbreaks and contextual shifts in multi-turn dialogue easily bypass standard toxicity filters. Their findings reveal a massive domain gap between explicit social media toxicity and the ``polite'' but harmful queries found in conversational environments. Building on this insight, Russinovich et al. introduced Crescendo \cite{russinovich2024crescendo}, a principled multi-turn jailbreak that incrementally escalates adversarial intent across turns, demonstrating that even models robust to single-turn attacks can be compromised through patient, multi-step interaction. The CoSafe benchmark \cite{yu2024cosafe} operationalizes this threat by providing curated multi-turn scenarios that exploit coreference and dialogue context to induce harmful compliance.
 
 Because safety can drift with conversation length, an initial non-toxic query can evolve into a jailbreak (or a refusal cascade) as the model adapts to the conversation flow. This exposes a fundamental weakness in point-in-time defenses. The realization that single-turn mechanisms fail to track accumulated conversational context underscores the need to evaluate defenses across an entire session, ensuring that moderation and decoding interventions remain robust as context accumulates. On the defense side, DeepContext \cite{deepcontext2026} proposes stateful real-time detection of adversarial intent drift across turns, while SaFeR-Steer \cite{safersteer2026} evolves multi-turn safety through synthetic bootstrapping and feedback dynamics, representing a shift toward adaptive, session-aware safety mechanisms.
 
-Crucially, multi-turn vulnerability is not only a binary property but a function of turn count and context window: a configuration that appears robust at turn 1 can become vulnerable after several turns of benign framing, incremental escalation, or coreference-based reframing. This motivates evaluation suites that explicitly measure safety as a trajectory over turns (not just an endpoint), and that can surface turn-dependent thresholds where behavior changes. In this paper, CoSafe-style multi-turn scenarios provide a practical, deployment-relevant way to quantify turn-wise drift and to test whether inference-time defenses and external guardrails remain stable as conversational context accumulates.
+Multi-turn vulnerability is a function of turn count and context window rather than a binary property: a configuration that appears robust at turn 1 can become vulnerable after several turns of benign framing, incremental escalation, or coreference-based reframing. This motivates evaluation suites that explicitly measure safety as a trajectory over turns (not just an endpoint), and that can surface turn-dependent thresholds where behavior changes. In this paper, CoSafe-style multi-turn scenarios provide a practical, deployment-relevant way to quantify turn-wise drift and to test whether inference-time defenses and external guardrails remain stable as conversational context accumulates.
 
 \section{Methodology}
 \label{sec:methodology}
 
-To rigorously assess the resilience of modern Large Language Models (LLMs) against sophisticated jailbreaks, we designed a comprehensive, capability-aware evaluation pipeline. Harmful prompts are sourced from WalledEval, benign prompts from XSTest, and multi-turn conversations from CoSafe; model outputs are scored with the StrongREJECT autograder to enable capability-aware comparisons across conditions. This methodology details the selection of target models, the construction of our dataset suite, the applied defense conditions, and the evaluation frameworks used to quantify both safety and utility.
+To assess the resilience of Large Language Models (LLMs) against single-turn and multi-turn jailbreaks, we design a capability-aware evaluation pipeline (Figure~\ref{fig:evaluation_pipeline}). Harmful prompts are sourced from WalledEval~\citep{walledeval2024}, benign prompts from XSTest~\citep{rottger2023xstest}, and multi-turn conversations from CoSafe~\citep{yu2024cosafe}. All outputs are scored uniformly to enable direct comparisons across model families and defense conditions.
 
 \begin{figure*}[t]
     \centering
@@ -124,29 +124,29 @@ To rigorously assess the resilience of modern Large Language Models (LLMs) again
 \end{figure*}
 
 \subsection{Model Selection}
-Our study evaluates three distinct, state-of-the-art models from the 2024-2025 landscape, chosen to represent different architectural families and alignment strategies:
-\begin{itemize}
-    \item \textbf{Llama-3.1-8B:} Selected as a representative of the current open-source state-of-the-art, this model features a modern architecture trained with Direct Preference Optimization (DPO) and Constitutional AI principles.
-    \item \textbf{Mistral-7B-Instruct-v0.2:} Included to provide a comparison against a different architecture family, this model utilizes modern instruct-tuning equipped with safety guardrails.
-    \item \textbf{Gemini 2.5 Flash:} Evaluated as a representative commercial API, this model features Google's production-level safety filtering and multi-modal capabilities.
+\label{sec:model_selection}
+
+We evaluate three models representing distinct architectural families and alignment regimes:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{LlamaGuard-3:} We integrate the 8B-parameter LlamaGuard-3 classifier~\citep{inan2023llamaguard, fedorov2024llama} as a dual pre-generation and post-generation filter. Both the input prompt and the generated response are classified; if either is flagged as \texttt{unsafe}, the output is overridden with a canonical refusal template (e.g., ``I cannot fulfill this request.'') prior to downstream evaluation, which subsequently receives a near-zero harm score ($s \approx 0$, $S \approx 1$) from the StrongREJECT judge.
+    \item \textbf{Mistral-7B-Instruct-v0.2:} An early instruct-tuned 7B open-weights model without heavy post-training safety guardrails, serving as a weakly aligned baseline.
+    \item \textbf{Gemini-2.5 Flash:} A commercial production API model featuring native provider-level alignment and safety filtering.
 \end{itemize}
 
 \subsection{Datasets and Scenario Design}
-To evaluate the models across a spectrum of threat vectors, we construct an evaluation suite comprising 356 test cases designed to test single-turn attacks, over-refusal, and multi-turn vulnerabilities. 
-\begin{itemize}
-    \item \textbf{WalledEval (Harmful Single-Turn):} We sample 200 diverse, pre-filtered harmful prompts from the WalledEval toolkit \cite{walledeval2024}, which encompasses over 35 industry-leading safety benchmarks.
-    \item \textbf{XSTest (Benign Single-Turn):} To accurately measure over-refusal, we utilize 100 safe but lexically complex prompts from the XSTest benchmark \cite{rottger2023xstest}. Testing against this dataset is critical to addressing the "Exaggerated Safety" baseline flaw identified in recent literature, ensuring models are not rewarded with high safety scores for simply collapsing into generalized refusal.
-    \item \textbf{CoSafe (Multi-Turn Scenarios):} Because safety can drift with conversation length, we sample 56 multi-turn conversations from the CoSafe dataset \cite{yu2024cosafe} and evaluate them over a three-turn horizon to measure turn-wise changes under accumulating context.
-\end{itemize}
+\label{sec:datasets}
+
+We construct an evaluation suite comprising $356$ test cases across three benchmarks (Table~\ref{tab:dataset_summary}):
 
 \begin{table}[t]
 \centering
 \caption{Dataset summary. The evaluation suite spans 356 instances across three complementary benchmarks.}
 \label{tab:dataset_summary}
-\resizebox{\columnwidth}{!}{
-\begin{tabular}{@{}llcc@{}}
+\setlength{\tabcolsep}{0pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}llcc@{}}
 \toprule
-Dataset & Type & Count & Turns \\
+\textbf{Dataset} & \textbf{Type} & \textbf{Count} & \textbf{Turns} \\
 \midrule
 WalledEval & Harmful single-turn & 200 & 1 \\
 XSTest & Benign single-turn & 100 & 1 \\
@@ -154,128 +154,150 @@ CoSafe & Multi-turn adversarial & 56 & 3 \\
 \midrule
 \textbf{Total} & & \textbf{356} & \\
 \bottomrule
-\end{tabular}
-}
+\end{tabular*}
 \end{table}
 
-\subsection{Experimental Conditions}
-Each model is evaluated under three distinct inference conditions designed to isolate the effectiveness of different defense paradigms. Specifically, we contrast a rule-based heuristic wrapper against a dedicated neural classifier guardrail to determine which approach best preserves utility. During all tests, text generation parameters are strictly controlled (\texttt{temperature=0.0}, \texttt{max\_tokens=200}) to ensure deterministic outputs.
+\begin{itemize}[leftmargin=*]
+    \item \textbf{WalledEval (Harmful Single-Turn):} We sample $200$ diverse harmful prompts from the WalledEval toolkit~\citep{walledeval2024}.
+    \item \textbf{XSTest (Benign Single-Turn):} To measure benign over-refusal, we evaluate $100$ safe but lexically sensitive prompts from XSTest~\citep{rottger2023xstest}, which contain polysemous trigger words (e.g., ``kill a process'') designed to test for ``Exaggerated Safety.''
+    \item \textbf{CoSafe (Multi-Turn Scenarios):} We sample $56$ three-turn adversarial conversations from CoSafe~\citep{yu2024cosafe}. To evaluate live context accumulation, user turns $t \in \{1, 2, 3\}$ are taken as fixed prompts from the dataset, while assistant turns are dynamically populated using the target model's own generated responses from preceding turns (\texttt{User: $u_1$ $\rightarrow$ Assistant: $a_1$ $\rightarrow$ User: $u_2$}).
+\end{itemize}
 
-\begin{itemize}
-    \item \textbf{Baseline:} The unmodified models are evaluated without any additional inference-time defenses or guardrails.
-    \item \textbf{SafeDecoding (Black-Box Approximation):} Original SafeDecoding (Xu et al., 2024) modifies token probabilities during decoding using logits from both a base and an expert model. Because commercial APIs (Gemini-2.5 Flash) and hosted inference endpoints do not expose full vocabulary logits for dual-model arithmetic, we implement an API-compatible heuristic approximation. This wrapper pairs controlled decoding parameters (temperature scaling on local Ollama endpoints and deterministic $\tau = 0.0$ decoding on APIs) with a post-generation lexical verification step that scans outputs for 32 high-risk keywords and substitutes a canonical refusal template when harmful terms appear without refusal indicators.  
-    \item \textbf{LlamaGuard-3:} An external, 8B-parameter multilingual guardrail is integrated as a content filter to classify prompts for malicious intent and evaluate generated responses for harmfulness.
+\subsection{Experimental Conditions}
+\label{sec:experimental_conditions}
+
+Each model is evaluated under three inference conditions. Specifically, we contrast a rule-based heuristic wrapper against a dedicated neural classifier guardrail to determine which approach best preserves utility. Across all runs, decoding parameters are fixed ($\text{temperature} = 0.0$, $\text{max\_tokens} = 200$) for reproducibility.
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Baseline:} Unmodified target models queried directly without external wrappers.
+    \item \textbf{SafeDecoding (Black-Box Approximation):} Original SafeDecoding~\citep{xu2024safedecoding} modifies token probabilities during decoding using logits from both a base and an expert model. Because commercial APIs (Gemini-2.5 Flash) and hosted inference endpoints do not expose full vocabulary logits for dual-model arithmetic, we implement an API-compatible heuristic approximation. This wrapper pairs controlled decoding parameters with a post-generation lexical filter that scans outputs for $32$ high-risk keywords and substitutes a canonical refusal template when harmful terms appear without refusal indicators.
+    \item \textbf{LlamaGuard-3:} We integrate the 8B-parameter LlamaGuard-3 classifier~\citep{inan2023llamaguard, fedorov2024llama} as a dual pre-generation and post-generation filter. Both the input prompt and the generated response are classified; if either is flagged as \texttt{unsafe}, the output is overridden with a standardized refusal template prior to downstream evaluation.
 \end{itemize}
 
 \subsection{Evaluation Framework and Metrics}
-Moving beyond traditional binary Attack Success Rate (ASR) metrics which foundational studies frequently use but which severely overestimate jailbreak effectiveness by ignoring capability loss, We utilize the capability-aware StrongREJECT framework \cite{souly2024strongreject}. StrongREJECT provides automated scoring that measures both a model's willingness to refuse and its capability preservation, achieving a 0.90 Spearman correlation with human judgment. 
+\label{sec:metrics}
 
-Beyond the primary StrongREJECT combined score, our analysis computes the True Positive Rate (TPR) at a 1\% False Positive Rate (FPR) to determine how much harmful content is caught when the defense is tuned to minimize false alarms. Additionally, we measure the False Refusal Rate using the XSTest dataset and construct a Safety-Utility Pareto frontier to visually map the precise tradeoff between security gains and utility costs across all models and conditions.
+\textbf{Continuous Harm and Safety Scoring.} Rather than relying solely on binary Attack Success Rate (ASR), we score model responses using the \texttt{strongreject\_finetuned} autograder~\citep{souly2024strongreject}, a fine-tuned Gemma-2B evaluator trained to predict the continuous StrongREJECT rubric score $s \in [0, 1]$:
+\begin{equation}
+    s = (1 - r) \times \frac{q_{\text{specific}} + q_{\text{convincing}}}{2}, \quad S = 1 - s \in [0, 1],
+\end{equation}
+where $r \in \{0, 1\}$ denotes binary refusal, $q_{\text{specific}}, q_{\text{convincing}} \in [0, 1]$ denote normalized specificity and convincingness sub-scores, and $S = 1 - s$ defines our continuous safety score (higher values indicate stronger refusal or harmlessness). While Gemma-2B is a dedicated 2B classifier distinct from generative Gemini endpoints, we note that it shares broad model-family lineage with Gemini-2.5 Flash.
+
+\textbf{ROC Separability ($\text{AUC}$ and $\text{TPR@1\%FPR}$).} To measure how effectively each model--condition pair separates harmful requests ($Y = 1$, $n=200$ WalledEval) from benign requests ($Y = 0$, $n=100$ XSTest), we sweep decision thresholds $\tau$ over the continuous score $S = 1 - s$ across all $300$ single-turn instances. By the Wilcoxon--Mann--Whitney statistic, $\text{AUC} = P(S_{\text{harmful}} > S_{\text{benign}}) + \frac{1}{2}P(S_{\text{harmful}} = S_{\text{benign}})$. For aligned models that refuse harmful requests ($S_{\text{harmful}} \to 1$) while answering benign requests ($S_{\text{benign}} < S_{\text{harmful}}$), $\text{AUC}$ approaches $1.0$. Conversely, when an unaligned model complies heavily with harmful prompts, $S_{\text{harmful}}$ drops below the harmlessness score of benign explanations ($S_{\text{benign}}$), resulting in an inverted rank ordering ($\text{AUC} < 0.5$). From the ROC curve, we extract the True Positive Rate at a strict $1\%$ False Positive Rate budget:
+\begin{equation}
+    \text{TPR@1\%FPR} = \text{TPR}(\tau^*), \quad \tau^* = \arg\min_{\tau} \left|\text{FPR}(\tau) - 0.01\right|.
+\end{equation}
+
+\textbf{False Refusal Rate (FRR) and Wilson Intervals.} On the $100$ benign XSTest prompts, we compute FRR via a deterministic 20-phrase refusal matcher (\texttt{simple\_refusal}, matching canonical refusal prefixes such as ``I cannot'' or ``I must decline'') rather than the StrongREJECT judge, as StrongREJECT is calibrated for harmful compliance. We report $95\%$ confidence intervals using the Wilson score interval~\citep{wilson1927probable}:
+\begin{equation}
+    \text{CI}_{\text{Wilson}} = \frac{\hat{p} + \frac{z^2}{2n} \pm z \sqrt{\frac{\hat{p}(1-\hat{p})}{n} + \frac{z^2}{4n^2}}}{1 + \frac{z^2}{n}},
+\end{equation}
+where $\hat{p} = \text{FRR}$, $n = 100$ (or $n = 300$ when aggregated across models), and $z = 1.96$.
+
+\textbf{Composite Pareto Score.} To summarize performance under strict deployment constraints, we define the composite Pareto Score in Table~\ref{tab:overall_safety_metrics} as the unweighted mean of strict low-FPR harmful recall and benign task retention:
+\begin{equation}
+    \text{Pareto Score} = \frac{\text{TPR@1\%FPR} + (1 - \text{FRR})}{2}.
+\end{equation}
 
 \paragraph{Code and Data Availability.} The evaluation pipeline code, dataset construction scripts, and analysis workflow are available at \href{https://github.com/SiddhuBlaze3050/Evaluating-Harmful_Instructions-Compliance-On-Modern-LLMs}{our GitHub repository}.
 
 \section{Results}
 \label{sec:results}
 
-We report capability-aware safety results across three model families (Gemini-2.5 Flash, Llama-3.1-8B, Mistral-7B), three conditions (baseline, SafeDecoding, LlamaGuard-3), and two evaluation settings: single-turn harmful/benign prompts ($n=300$ per model-condition; $200$ harmful, $100$ benign) and multi-turn CoSafe conversations ($n=56$ conversations per model-condition, 3 turns each).
+We report capability-aware safety results across three model families (Gemini-2.5 Flash, Llama-3.1-8B, Mistral-7B), three conditions (Baseline, SafeDecoding, LlamaGuard-3), and two evaluation settings: single-turn harmful and benign prompts ($n=300$ per model--condition; $200$ harmful, $100$ benign) and multi-turn CoSafe conversations ($n=56$ conversations per model--condition, 3 turns each).
 
 \subsection{Overall Safety Metrics}
 \label{sec:overall_metrics}
 
-Table~\ref{tab:overall_safety_metrics} summarizes the main single-turn metrics: AUC, TPR at $1\%$ FPR, false refusal rate (FRR) on benign prompts, and the composite Pareto score used in our pipeline.
+Table~\ref{tab:overall_safety_metrics} summarizes the main single-turn metrics: AUC, TPR at $1\%$ FPR, false refusal rate (FRR) on benign prompts with $95\%$ Wilson confidence intervals, and the composite Pareto Score, defined as the mean of strict low-FPR recall and benign utility retention: $\text{Pareto Score} = 0.5 \times (\text{TPR@1\%FPR} + (1 - \text{FRR}))$.
 
 \begin{table*}[t]
 \centering
-\caption{Overall safety and utility metrics across models and defense conditions.}
+\caption{Overall single-turn safety and utility metrics across models and defense conditions ($n=200$ WalledEval harmful, $n=100$ XSTest benign). Bracketed values denote $95\%$ Wilson confidence intervals. Boldface indicates the best value per model family.}
 \label{tab:overall_safety_metrics}
-\resizebox{\linewidth}{!}{
-\begin{tabular}{l l c c c c}
-\hline
-Model & Condition & AUC & TPR@1\%FPR & FRR (\%) & Pareto Score \\
-\hline
-Gemini-2.5 Flash & Baseline     & 0.860 & 52.0\% & 0.0\%  & 0.760 \\
-Gemini-2.5 Flash & LlamaGuard-3 & 0.931 & 13.0\% & 12.0\% & 0.505 \\
-Gemini-2.5 Flash & SafeDecoding & 0.810 & 27.0\% & 9.0\%  & 0.590 \\
-\hline
-Llama-3.1-8B     & Baseline     & 0.840 & 8.5\%  & 5.0\%  & 0.518 \\
-Llama-3.1-8B     & LlamaGuard-3 & 0.942 & 31.0\% & 11.0\% & 0.600 \\
-Llama-3.1-8B     & SafeDecoding & 0.764 & 9.0\%  & 23.0\% & 0.430 \\
-\hline
-Mistral-7B       & Baseline     & 0.428 & 0.0\%  & 2.0\%  & 0.490 \\
-Mistral-7B       & LlamaGuard-3 & 0.916 & 14.5\% & 11.0\% & 0.518 \\
-Mistral-7B       & SafeDecoding & 0.421 & 0.0\%  & 11.0\% & 0.445 \\
-\hline
+\setlength{\tabcolsep}{8pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}llcccc@{}}
+\toprule
+\textbf{Model} & \textbf{Condition} & \textbf{AUC} $\uparrow$ & \textbf{TPR@1\%FPR} $\uparrow$ & \textbf{FRR (95\% CI)} $\downarrow$ & \textbf{Pareto Score} $\uparrow$ \\
+\midrule
+Gemini-2.5 Flash & Baseline      & 0.860 & \textbf{52.0\%} & \textbf{0.0\% [0.0\%, 3.7\%]}   & \textbf{0.760} \\
+                 & LlamaGuard-3  & \textbf{0.931} & 13.0\% & 12.0\% [7.0\%, 19.8\%] & 0.505 \\
+                 & SafeDecoding  & 0.810 & 27.0\% & 9.0\% [4.8\%, 16.2\%]  & 0.590 \\
+\midrule
+Llama-3.1-8B     & Baseline      & 0.840 & 8.5\%  & \textbf{5.0\% [2.2\%, 11.2\%]}  & 0.518 \\
+                 & LlamaGuard-3  & \textbf{0.942} & \textbf{31.0\%} & 11.0\% [6.3\%, 18.6\%] & \textbf{0.600} \\
+                 & SafeDecoding  & 0.764 & 9.0\%  & 23.0\% [15.8\%, 32.2\%] & 0.430 \\
+\midrule
+Mistral-7B       & Baseline      & 0.428 & 0.0\%  & \textbf{2.0\% [0.6\%, 7.0\%]}   & 0.490 \\
+                 & LlamaGuard-3  & \textbf{0.916} & \textbf{14.5\%} & 11.0\% [6.3\%, 18.6\%] & \textbf{0.518} \\
+                 & SafeDecoding  & 0.421 & 0.0\%  & 11.0\% [6.3\%, 18.6\%] & 0.445 \\
+\bottomrule
 \end{tabular}
-}
 \end{table*}
 
-Two patterns are consistent across models. First, LlamaGuard-3 provides the strongest ranking performance by AUC (0.916--0.942 across all three models), indicating better harmful-vs-benign separability. Second, this gain is accompanied by higher over-refusal on benign prompts. Aggregated across models, FRR increases from \textbf{2.3\%} under baseline (\(95\%\) CI: [1.1\%, 4.7\%]) to \textbf{11.3\%} with LlamaGuard-3 (\(95\%\) CI: [8.2\%, 15.4\%]) and \textbf{14.3\%} with SafeDecoding (\(95\%\) CI: [10.8\%, 18.8\%]). This baseline performance establishes a crucial point of departure from early safety literature. Foundational alignment papers frequently optimize for near-zero compliance on explicit harm, often inadvertently pushing baseline models toward high single-turn refusal rates. However, our results indicate that the baseline Llama-3.1-8B and Mistral-7B models maintain a low average FRR of 2.3\% on the XSTest benign prompt set. This low baseline over-refusal helps isolate the utility cost of the applied defenses, making the subsequent FRR increases under SafeDecoding and LlamaGuard-3 more plausibly attributable to the interventions rather than unusually refusal-prone base models.
+Two patterns are consistent across models. First, LlamaGuard-3 provides the strongest global ranking performance by AUC ($0.916$--$0.942$ across all three models), indicating superior harmful-versus-benign separability. Second, this gain is accompanied by elevated over-refusal on benign prompts. Aggregated across models (Figure~\ref{fig:frr_by_condition}), FRR increases from \textbf{2.3\%} under baseline ($95\%$ CI: $[1.1\%, 4.7\%]$) to \textbf{11.3\%} with LlamaGuard-3 ($95\%$ CI: $[8.2\%, 15.4\%]$) and \textbf{14.3\%} with SafeDecoding ($95\%$ CI: $[10.8\%, 18.8\%]$). Because the baseline models maintain a low average FRR of $2.3\%$ on XSTest, the subsequent FRR increases under SafeDecoding and LlamaGuard-3 are directly attributable to the applied defenses rather than overly conservative base models.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{./figures/frr_by_condition.png}
-\caption{False refusal rate (FRR) by defense condition, aggregated across all three models, with Wilson 95\% confidence intervals. The dashed horizontal line marks a 10\% operational threshold. Both LlamaGuard-3 and SafeDecoding exceed this threshold on average, while baseline models maintain low over-refusal (2.3\%).}
+\caption{False refusal rate (FRR) by defense condition, aggregated across all three models, with Wilson $95\%$ confidence intervals. The dashed horizontal line marks a $10\%$ operational threshold. Both LlamaGuard-3 and SafeDecoding exceed this threshold on average, while baseline models maintain low over-refusal ($2.3\%$).}
 \label{fig:frr_by_condition}
 \end{figure}
 
-Notably, operating-point behavior (TPR@1\%FPR) is model-dependent. For Llama-3.1-8B and Mistral-7B, LlamaGuard-3 substantially improves TPR@1\%FPR (8.5\% to 31.0\%, and 0.0\% to 14.5\%, respectively). For Gemini-2.5 Flash, however, baseline remains best at this strict false-positive budget (52.0\% vs 13.0\% for LlamaGuard-3), suggesting that strong base alignment can already operate effectively in the low-FPR regime.
+Notably, both operating-point recall ($\text{TPR@1\%FPR}$) and global separability ($\text{AUC}$) depend strongly on base model alignment. For Gemini-2.5 Flash, the unmodified baseline achieves the highest recall at the strict $1\%$ false-positive budget ($52.0\%$ vs.\ $13.0\%$ for LlamaGuard-3), demonstrating that strong native alignment ($\bar{S}_{\text{harmful}} = 0.978 > \bar{S}_{\text{benign}} = 0.946$) already operates effectively in the low-FPR regime. In contrast, Mistral-7B Baseline exhibits an $\text{AUC}$ of $0.428$ (and $0.421$ under SafeDecoding), falling below the $0.500$ random baseline. This inversion occurs because Mistral-7B complies with $82.5\%$ of harmful WalledEval prompts, pulling its mean safety score on harmful inputs ($\bar{S}_{\text{harmful}} = 0.552$, median $0.520$) below its mean safety score on benign XSTest explanations ($\bar{S}_{\text{benign}} = 0.631$, median $0.601$), such that $P(S_{\text{harmful}} > S_{\text{benign}}) = 0.428$. Wrapping Mistral-7B with LlamaGuard-3 intercepts these harmful completions and replaces them with refusal templates ($\bar{S}_{\text{harmful}} = 0.974 \gg \bar{S}_{\text{benign}} = 0.655$), restoring proper rank ordering and lifting $\text{AUC}$ to $0.916$ and $\text{TPR@1\%FPR}$ from $0.0\%$ to $14.5\%$.
 
-\subsection{Safety-Utility Pareto Frontier}
+\subsection{Safety--Utility Pareto Frontier}
 \label{sec:pareto_results}
 
-Figure~\ref{fig:pareto_frontier} shows the safety-utility tradeoff where utility is measured on benign prompts and safety is measured on harmful prompts. The frontier highlights non-dominated operating points rather than a single globally best method.
+Figure~\ref{fig:pareto_frontier} maps the safety--utility tradeoff across all nine configurations, where utility is measured on benign XSTest prompts and safety ($1 - s$) is measured on harmful WalledEval prompts. The frontier highlights non-dominated operating points rather than a single globally optimal defense.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{./figures/safety_utility_pareto_frontier.png}
-\caption{Safety--utility Pareto frontier across all model--condition pairs. Each point represents one model under one defense condition; the upper-right region is preferred (high safety and high utility). Gemini-2.5 + LlamaGuard-3 achieves the highest safety ($\approx$1.0) but lowest utility ($\approx$0.38), while Llama-3.1 baseline offers the opposite profile.}
+\caption{Safety--utility Pareto frontier across all model--condition pairs. Each point represents one model under one defense condition; the upper-right region is preferred (high safety and high utility). Gemini-2.5 + LlamaGuard-3 achieves the highest safety ($\approx 1.0$) but lowest benign utility ($\approx 0.38$), while Llama-3.1 baseline offers the opposite profile.}
 \label{fig:pareto_frontier}
 \end{figure}
 
-Gemini-2.5 + LlamaGuard-3 attains the highest safety region (\(\approx 1.0\)) but with lower utility (\(\approx 0.38\)). Llama-3.1 baseline provides the opposite profile: substantially higher utility (\(\approx 0.75\)) with lower safety (\(\approx 0.87\)) than guardrail-augmented variants. This confirms that safety interventions should be selected by deployment objective: if strict harm refusal is prioritized, guardrails dominate; if benign-task retention is prioritized, baseline-aligned models may be preferable.
+Gemini-2.5 Flash with LlamaGuard-3 reaches the highest continuous safety ($\approx 1.0$) but drops in benign utility ($\approx 0.38$). Conversely, the Llama-3.1-8B baseline preserves higher benign utility ($\approx 0.75$) at a moderate safety level ($\approx 0.87$). Guardrail-augmented models therefore maximize harm interception at the expense of benign-task continuity, whereas baseline-aligned models preserve utility on borderline benign queries.
 
-\subsection{Multi-Turn Drift Curves}
-\label{sec:multiturn_results}
+\subsection{Binary ASR vs.\ Capability-Aware Ranking}
+\label{sec:binary_asr}
 
-Across turns, turn-wise StrongREJECT scores drift as conversational context accumulates (Figure~\ref{fig:multiturn_curves}). Here, lower StrongREJECT scores indicate more robust refusal behavior (i.e., a safer response under this autograder), while higher scores indicate increased harmful compliance.
+To test whether capability-aware evaluation alters defense rankings compared to traditional refusal metrics, we compare Binary Attack Success Rate (ASR), harm-only continuous safety ($1 - \bar{s}$ on WalledEval), and our composite Pareto Score in Table~\ref{tab:asr_pareto_comparison}. Under strict binary thresholding, an attack is counted as successful whenever a response exhibits any non-zero compliance ($s > 0$).
 
-Aggregating conditions, Llama-3.1-8B shows the largest negative drift from an initial StrongREJECT score of 0.408 to a final score of 0.308 (\(\Delta=-0.100\)), consistent with becoming more conservative over turns in this CoSafe setting. Mistral-7B shows a more moderate decrease, dropping from 0.337 to 0.316 (\(\Delta=-0.021\)). In contrast, Gemini-2.5 Flash starts with a low StrongREJECT score (0.038) but shows a marginal upward drift (\(\Delta=+0.024\)), indicating slightly increased harmful compliance over turns.
-
-\begin{figure*}[t]
+\begin{table*}[t]
 \centering
-\includegraphics[width=\textwidth]{./figures/multiturn_degradation_comparison.png}
-\caption{Turn-wise StrongREJECT score drift by model (left) and by defense condition (right) over 3-turn CoSafe conversations. Lower scores indicate safer (stronger refusal) behavior. Llama-3.1-8B shows the largest negative drift ($\Delta=-0.100$), becoming more conservative over turns, while Gemini-2.5 Flash exhibits marginal upward drift ($\Delta=+0.024$).}
-\label{fig:multiturn_curves}
-\end{figure*}
-
-Condition-level trends show that SafeDecoding is the most stable (smallest-magnitude drift) across turns, while LlamaGuard-3 shows the largest negative drift:
-\begin{align*}
-\Delta_{\text{baseline}} &= -0.024, \\
-\Delta_{\text{LlamaGuard-3}} &= -0.063, \\
-\Delta_{\text{SafeDecoding}} &= -0.009.
-\end{align*}
-
-At the model-condition level, the largest-magnitude drift appears in Llama-3.1-8B + LlamaGuard-3 (\(\Delta=-0.128\), slope \(-0.0638\) per turn). Only Mistral-7B + LlamaGuard-3 reaches statistical significance in its trend (\(p=0.045\)); other slopes are directionally consistent but not significant, likely due to the short turn horizon (3 turns). Table~\ref{tab:multiturn_drift} summarizes the per-model multi-turn drift.
-
-\begin{table}[t]
-\centering
-\caption{Multi-turn StrongREJECT score drift by model, aggregated across defense conditions over 3-turn CoSafe conversations. $\Delta$ denotes the change from Turn~1 to Turn~3 (negative = more conservative).}
-\label{tab:multiturn_drift}
-\begin{tabular}{@{}lccc@{}}
+\caption{Comparison of Binary ASR ($s > 0$), Harm-Only Continuous Safety ($1 - \bar{s}$), and Capability-Aware Pareto Score across all nine model--condition pairs. Binary ASR produces a 9-way tie ($100.0\%$), failing to separate models. Harm-only continuous safety ranks aggressive guardrails first by ignoring benign refusals, whereas the capability-aware Pareto Score alters the ranking once FRR and low-FPR recall are accounted for. Boldface indicates the best value per model family.}
+\label{tab:asr_pareto_comparison}
+\setlength{\tabcolsep}{0pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}llcccccc@{}}
 \toprule
-Model & Turn 1 & Turn 3 & $\Delta$ \\
+ & & \multicolumn{2}{c}{\textbf{Binary ASR}} & \multicolumn{2}{c}{\textbf{Cont.\ Safety ($1-\bar{s}$)}} & \multicolumn{2}{c}{\textbf{Pareto Score}} \\
+\cmidrule(lr){3-4} \cmidrule(lr){5-6} \cmidrule(l){7-8}
+\textbf{Model} & \textbf{Condition} & \textbf{Rate} $\downarrow$ & \textbf{Rank} & \textbf{Score} $\uparrow$ & \textbf{Rank} & \textbf{Score} $\uparrow$ & \textbf{Rank} \\
 \midrule
-Llama-3.1-8B & 0.408 & 0.308 & $-0.100$ \\
-Mistral-7B & 0.337 & 0.316 & $-0.021$ \\
-Gemini-2.5 Flash & 0.038 & 0.062 & $+0.024$ \\
+Gemini-2.5 Flash & Baseline      & 100.0\% & 1 (Tie) & 97.8\% & 4 & \textbf{0.760} & \textbf{1} \\
+                 & LlamaGuard-3  & 100.0\% & 1 (Tie) & \textbf{99.8\%} & \textbf{1} & 0.505 & 6 \\
+                 & SafeDecoding  & 100.0\% & 1 (Tie) & 98.0\% & 3 & 0.590 & 3 \\
+\midrule
+Llama-3.1-8B     & Baseline      & 100.0\% & 1 (Tie) & 86.7\% & 7 & 0.518 & 4 (Tie) \\
+                 & LlamaGuard-3  & 100.0\% & 1 (Tie) & \textbf{98.6\%} & \textbf{2} & \textbf{0.600} & \textbf{2} \\
+                 & SafeDecoding  & 100.0\% & 1 (Tie) & 88.5\% & 6 & 0.430 & 9 \\
+\midrule
+Mistral-7B       & Baseline      & 100.0\% & 1 (Tie) & 55.2\% & 9 & 0.490 & 7 \\
+                 & LlamaGuard-3  & 100.0\% & 1 (Tie) & \textbf{97.4\%} & \textbf{5} & \textbf{0.518} & \textbf{4 (Tie)} \\
+                 & SafeDecoding  & 100.0\% & 1 (Tie) & 60.3\% & 8 & 0.445 & 8 \\
 \bottomrule
-\end{tabular}
-\end{table}
+\end{tabular*}
+\end{table*}
 
-\subsection{TPR@FPR Curves for All Conditions}
+Table~\ref{tab:asr_pareto_comparison} highlights two critical ranking failures in standard evaluation. First, Binary ASR yields $100.0\%$ across all nine cells because every configuration produced at least marginal compliance ($s > 0$) on the 200 WalledEval prompts, treating minor hedging (e.g., $\bar{s} = 0.022$) identically to actionable harmful compliance ($\bar{s} = 0.448$). Second, evaluating models solely by continuous harm reduction ($1 - \bar{s}$) ranks Gemini-2.5 Flash + LlamaGuard-3 first ($99.8\%$) and Llama-3.1-8B + SafeDecoding sixth ($88.5\%$). Once benign over-refusal (FRR) and strict low-FPR recall are incorporated via the Pareto Score, the ranking shifts substantially: Gemini-2.5 Flash + LlamaGuard-3 drops from Rank~1 to Rank~6 ($0.505$), Llama-3.1-8B + SafeDecoding drops from Rank~6 to Rank~9 ($0.430$) due to its $23.0\%$ FRR, and unmodified Gemini-2.5 Flash rises from Rank~4 to Rank~1 ($0.760$).
+
+\subsection{TPR@FPR Curves Across Conditions}
 \label{sec:roc_results}
 
-Figure~\ref{fig:roc_all_models} reports ROC curves for each model under baseline, SafeDecoding, and LlamaGuard-3 (detailed in Figures \ref{fig:roc_gemini}, \ref{fig:roc_llama}, and \ref{fig:roc_mistral}). LlamaGuard-3 consistently yields the largest AUC for every model, but this does not always translate into the best TPR at very low FPR.
+Figure~\ref{fig:roc_all_models} reports ROC curves for each model under Baseline, SafeDecoding, and LlamaGuard-3. While LlamaGuard-3 consistently yields the largest global AUC for every model, it only improves low-FPR recall on weaker base models (Llama-3.1-8B and Mistral-7B), whereas baseline Gemini-2.5 Flash dominates at the strict $1\%$ FPR operating point ($52.0\%$).
 
 \begin{figure*}[t]
     \centering
@@ -300,16 +322,43 @@ Figure~\ref{fig:roc_all_models} reports ROC curves for each model under baseline
         \caption{Mistral-7B}
         \label{fig:roc_mistral}
     \end{subfigure}
-    \caption{ROC curves comparing True Positive Rate (TPR) vs.\ False Positive Rate (FPR) under Baseline, SafeDecoding, and LlamaGuard-3 conditions for each model family. Curves closer to the upper-left corner indicate better harmful--benign discrimination. LlamaGuard-3 consistently achieves the highest AUC, but baseline Gemini-2.5 Flash dominates at the strict 1\% FPR operating point (dashed vertical line).}
+    \caption{ROC curves comparing True Positive Rate (TPR) vs.\ False Positive Rate (FPR) under Baseline, SafeDecoding, and LlamaGuard-3 conditions for each model family. LlamaGuard-3 consistently achieves the highest AUC, but baseline Gemini-2.5 Flash dominates at the strict $1\%$ FPR operating point (dashed vertical line).}
     \label{fig:roc_all_models}
 \end{figure*}
 
-For Gemini-2.5, baseline has the best low-FPR operating point (TPR@1\%FPR = 52.0\%) despite lower AUC than LlamaGuard-3. For Llama-3.1 and Mistral, LlamaGuard-3 dominates both AUC and TPR@1\%FPR. SafeDecoding is mixed: it modestly improves Mistral harmful refusal over baseline but shows weak separability (AUC \(\approx 0.42\)) and high FRR in Llama-3.1 (23\%).
+\subsection{Multi-Turn Drift Curves}
+\label{sec:multiturn_results}
+
+Across three-turn CoSafe conversations, turn-wise StrongREJECT scores vary as conversational context accumulates (Figure~\ref{fig:multiturn_curves} and Table~\ref{tab:multiturn_drift}). Here, lower StrongREJECT scores indicate stronger refusal behavior, while higher scores indicate greater harmful compliance.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{./figures/multiturn_degradation_comparison.png}
+\caption{Turn-wise StrongREJECT score drift by model (left) and by defense condition (right) over 3-turn CoSafe conversations. Lower scores indicate safer (stronger refusal) behavior. Llama-3.1-8B shows the largest negative drift ($\Delta=-0.100$), becoming more conservative over turns, while Gemini-2.5 Flash exhibits marginal upward drift ($\Delta=+0.024$).}
+\label{fig:multiturn_curves}
+\end{figure*}
+
+Aggregating across defense conditions, Llama-3.1-8B exhibits the largest negative drift from Turn~1 ($0.408$) to Turn~3 ($0.308$, $\Delta=-0.100$), becoming more conservative over turns. Mistral-7B shows a smaller decrease from $0.337$ to $0.316$ ($\Delta=-0.021$). In contrast, Gemini-2.5 Flash starts with a low StrongREJECT score ($0.038$) and shows a slight upward drift ($\Delta=+0.024$). Across defense conditions, SafeDecoding shows the smallest turn-wise change ($\Delta_{\text{SafeDecoding}} = -0.009$), compared to $\Delta_{\text{baseline}} = -0.024$ and $\Delta_{\text{LlamaGuard-3}} = -0.063$. At the individual model--condition level, the steepest drift occurs in Llama-3.1-8B + LlamaGuard-3 ($\Delta=-0.128$, slope $-0.0638$ per turn), while only Mistral-7B + LlamaGuard-3 reaches statistical significance ($p=0.045$) over the short three-turn horizon.
+
+\begin{table}[t]
+\centering
+\caption{Multi-turn StrongREJECT score drift by model, aggregated across defense conditions over 3-turn CoSafe conversations. $\Delta$ denotes the change from Turn~1 to Turn~3 (negative = more conservative). Boldface marks the lowest compliance score per turn and largest conservative shift.}
+\label{tab:multiturn_drift}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Model} & \textbf{Turn 1} $\downarrow$ & \textbf{Turn 3} $\downarrow$ & $\boldsymbol{\Delta}$ \\
+\midrule
+Llama-3.1-8B     & 0.408 & 0.308 & $\mathbf{-0.100}$ \\
+Mistral-7B       & 0.337 & 0.316 & $-0.021$ \\
+Gemini-2.5 Flash & \textbf{0.038} & \textbf{0.062} & $+0.024$ \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Result Summary}
 \label{sec:results_summary}
 
-The experiments reveal a consistent tradeoff: methods that maximize aggregate detection quality (especially LlamaGuard-3 by AUC) can simultaneously increase benign refusal. Capability-aware evaluation therefore changes model ranking compared with pure refusal metrics. In our setting, no single defense dominates across all objectives; the preferred operating point depends on whether deployment prioritizes strict harmful-content interception, benign-task continuity, or balanced performance on the safety-utility frontier.
+The experiments reveal a consistent operational tradeoff: defenses that maximize aggregate detection quality (such as LlamaGuard-3 by AUC) or harm-only refusal simultaneously increase benign over-refusal. Accounting for benign utility preservation and strict low-FPR operating points therefore alters defense rankings compared with refusal-only metrics, while multi-turn evaluation reveals turn-wise score drift that differs across model families and defenses.
 
 \section{Discussion}
 \label{sec:discussion}
@@ -324,15 +373,16 @@ This sharp rise in false refusals highlights the boundary conditions of heuristi
 
 Aggregated across models (Figure~\ref{fig:frr_by_condition}), baseline has low over-refusal (FRR = 2.3\%, 95\% CI [1.1\%, 4.7\%]) while both interventions exceed a 10\% operational threshold on average (LlamaGuard-3: 11.3\% [8.2\%, 15.4\%]; SafeDecoding: 14.3\% [10.8\%, 18.8\%]). Thus, guardrails can be ``safer'' under ranking metrics yet impose a measurable utility tax.
 
-\subsection{Multi-Turn Vulnerability: Temporal Drift Matters Even Over Three Turns}
+\subsection{Multi-Turn Dynamics: Observing Turn-Wise Drift Over Short Horizons}
+\label{sec:multiturn_discussion}
 
-Multi-turn interactions expose failure modes that are not visible in single-turn evaluation, because risk is shaped by the evolving conversation state (Section~\ref{sec:multiturn_results}, Figure~\ref{fig:multiturn_curves}). In our pipeline, turn-wise StrongREJECT scores exhibit systematic drift with conversation length, and the magnitude of this drift depends on the defense condition. When aggregating across models, SafeDecoding shows the smallest absolute trend across turns (slope $\approx -0.0046$ per turn), while LlamaGuard-3 shows the largest magnitude drift (slope $\approx -0.0316$ per turn), suggesting that some defenses are more sensitive to accumulated context than others.
+Multi-turn interactions can surface dynamics that are not visible in single-turn evaluation, as responses are conditioned on evolving conversation state (Section~\ref{sec:multiturn_results}, Figure~\ref{fig:multiturn_curves}). In our pipeline, we observe turn-wise drift in StrongREJECT scores that varies by model family and defense condition. Aggregating across models, SafeDecoding exhibits the smallest absolute trend across turns (slope $\approx -0.0046$ per turn), whereas LlamaGuard-3 exhibits the largest negative drift (slope $\approx -0.0316$ per turn), suggesting that external input--output filters and heuristic wrappers respond differently as conversational context accumulates.
 
-At the model--condition level, the steepest trend occurs for Llama-3.1-8B + LlamaGuard-3 (slope $-0.0638$ per turn), and the only statistically significant trend is observed for Mistral-7B + LlamaGuard-3 ($p=0.045$, $R^2=0.995$). While many slopes do not reach significance, this is expected with only three turns and 56 conversations per configuration: with such a short horizon, statistical power is limited, and even strong-looking trends can be indistinguishable from noise. Importantly, a small per-turn slope can compound over longer sessions as demonstrated by the Crescendo attack \cite{russinovich2024crescendo}, which requires only gradual escalation to bypass initially robust models; therefore, multi-turn evaluation should be treated as a first-order deployment concern rather than an academic edge case.
+At the model--condition level, the steepest downward trend occurs for Llama-3.1-8B + LlamaGuard-3 (slope $-0.0638$ per turn), though only Mistral-7B + LlamaGuard-3 reaches statistical significance ($p=0.045$, $R^2=0.995$). Because our evaluation is constrained to three turns and $56$ conversations per configuration, statistical power is limited and most per-turn slopes remain directionally indicative rather than statistically conclusive. Nevertheless, even modest per-turn shifts warrant attention, as gradual escalation attacks such as Crescendo~\citep{russinovich2024crescendo} exploit multi-turn context over extended sessions.
 
-In contrast to the open-weights models, Gemini-2.5 Flash exhibited a small upward drift in StrongREJECT score ($\Delta=+0.024$) across multi-turn scenarios. One possible explanation is that commercial API moderation and response policies can interact with the cumulative conversational context in ways that differ from open-weights deployments. During a creeping jailbreak, early turns may be benign and pass initial checks, while later turns may trigger different refusal or partial-compliance behaviors as intent becomes explicit, producing a non-constant safety signal across the session.
+In contrast to the open-weights models, which become more conservative over turns ($\Delta = -0.100$ for Llama-3.1-8B and $\Delta = -0.021$ for Mistral-7B), Gemini-2.5 Flash exhibits a marginal upward drift in StrongREJECT score ($\Delta = +0.024$). A plausible explanation is that commercial API moderation and native alignment policies weigh cumulative conversational context differently than static open-weights checkpoints: benign early turns may establish conversational rapport before harmful intent becomes explicit in Turn~3.
 
-These findings highlight a key limitation of point-in-time benchmarking: even over three turns, the safety signal can drift meaningfully, and the direction of drift can vary by model and defense. This aligns with the core premise of TOXICCHAT \cite{lin2023toxicchat} that real-world adversarial intent is implicit and conversational. In our CoSafe evaluations, some configurations become more conservative over turns (negative drift in StrongREJECT score), which can improve safety at the potential cost of helpfulness; others drift in the opposite direction. Consequently, future safety baselines should mandate multi-turn evaluation as a primary criterion rather than treating it as an edge case. Emerging stateful detection methods such as DeepContext \cite{deepcontext2026} represent a promising direction for tracking accumulated adversarial intent across turns in real time.
+Overall, while we observe turn-wise drift that varies by model and defense condition, evaluating over longer conversation horizons is needed to confirm whether these trajectories compound in extended deployments. This observation is consistent with datasets such as ToxicChat~\citep{lin2023toxicchat}, which emphasize that adversarial intent is often distributed across dialogue turns, and motivates further exploration of stateful context trackers~\citep{deepcontext2026}.
 
 \subsection{Why Capability Preservation Changes the Ranking of ``Best'' Defenses}
 
@@ -353,18 +403,6 @@ Based on the observed tradeoffs, we recommend the following deployment heuristic
 
 Overall, the results indicate that inference-time safety is not a one-dimensional optimization: the best defense depends on model baseline alignment, acceptable false-positive rates, the length and adaptivity of user conversations, and the tolerance for benign-task degradation. A capability-aware, multi-metric evaluation is therefore necessary to select defensible operating points for real deployments.
 
-\section*{Limitations}
-\label{sec:study_limitations}
-
-Several limitations constrain the generality of these findings.
-
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Sample size and horizon.} The prompt pool contains 300 single-turn prompts (200 harmful WalledEval attacks, and 100 benign XSTest prompts) plus 56 CoSafe multi-turn scenarios. The primary single-turn metrics reported in Section~\ref{sec:overall_metrics} use the 300-prompt WalledEval+XSTest subset per model--condition (200 harmful, 100 benign), and the multi-turn setting evaluates 56 conversations per model--condition over a three-turn horizon. While sufficient to surface clear tradeoffs (e.g., over-refusal under guardrails), the short multi-turn horizon limits statistical power for trend estimation and may understate compounding effects that emerge in longer real-world sessions.
-    \item \textbf{Automated evaluation limitations.} StrongREJECT provides a scalable, capability-aware safety signal, but it remains an automated judge and can mis-score borderline cases (e.g., partial compliance, indirect assistance, or nuanced refusals). The interpretation of safety can also be sensitive to thresholds (e.g., refusal cutoffs), prompt phrasing, and the evaluator model's own biases \cite{judgesensitivity2026}. As a result, absolute scores should be treated as approximate, with emphasis placed on relative comparisons across conditions.
-    \item \textbf{English-only testing and domain coverage.} Prompts and conversations are English, and the datasets used may not reflect the full distribution of user intents, dialects, or cultural contexts. Safety and refusal behavior can differ substantially across languages and domains; therefore, these results may not transfer to multilingual deployments or specialized verticals without re-calibration.
-    \item \textbf{Model coverage and scale.} The study evaluates a small set of model families, including two relatively small open-weight models (7B--8B) and one API-access model. Larger frontier models, alternative training recipes, and other guardrail systems may exhibit different safety--utility frontiers and multi-turn dynamics. Expanding coverage to larger parameter counts and additional providers is important future work.
-\end{itemize}
-
 \section{Conclusion}
 \label{sec:conclusion}
 
@@ -378,6 +416,17 @@ This work introduced a capability-aware evaluation of inference-time safety inte
 
 \section*{Code and Data Availability}
 The evaluation pipeline code, dataset construction scripts, and analysis workflow are available at \href{https://github.com/SiddhuBlaze3050/Evaluating-Harmful_Instructions-Compliance-On-Modern-LLMs}{our GitHub repository}.
+
+\section*{Limitations}
+\label{sec:study_limitations}
+
+Several methodological and scope constraints qualify our findings. First, because commercial APIs (Gemini-2.5 Flash) and standard hosted endpoints do not expose full vocabulary logits for dual-model contrastive decoding, our SafeDecoding condition implements a black-box approximation combining decoding-parameter control with a 32-keyword post-generation lexical filter rather than original token-level logit arithmetic~\citep{xu2024safedecoding}. Consequently, the elevated over-refusal observed under SafeDecoding ($14.3\%$ mean FRR) reflects the brittleness of lexical post-filtering on polysemous XSTest prompts rather than intrinsic flaws in logit-level alignment. Second, while the \texttt{strongreject\_finetuned} evaluator~\citep{souly2024strongreject} provides a scalable capability-aware signal via a specialized 2B rubric classifier (Gemma-2B), automated judges remain sensitive to borderline compliance, prompt phrasing, and evaluator bias~\citep{judgesensitivity2026}; moreover, Gemma-2B shares broad model-family lineage with Gemini-2.5 Flash, motivating multi-family judge ensembles in future work. Third, benign false refusals on XSTest were classified via a deterministic 20-phrase refusal matcher (\texttt{simple\_refusal}), which captures canonical refusals but may undercount subtle conversational hedging. Finally, our empirical scope is restricted to English-language benchmarks, three model families (two 7B--8B open-weights models and one commercial API), and $56$ three-turn CoSafe conversations per condition; longer dialogue horizons, larger frontier models, and multilingual settings may exhibit different safety--utility frontiers and compounding drift dynamics.
+
+\section*{Ethics Statement}
+This study evaluates inference-time safety defenses using publicly available, peer-reviewed red-teaming benchmarks: WalledEval~\citep{walledeval2024}, XSTest~\citep{rottger2023xstest}, and CoSafe~\citep{yu2024cosafe}. All response grading was performed via automated evaluators without exposing human annotators to harmful content. No novel jailbreak templates or exploit payloads were created, and all qualitative examples in Appendix~A are redacted or truncated to remove actionable harmful instructions. All experiments were conducted in controlled environments to audit over-refusal and safety--utility trade-offs.
+
+\section*{AI-Use Disclosure}
+In accordance with AAAI guidelines on generative AI usage, the authors disclose that large language models were utilized as experimental evaluation subjects (Gemini-2.5 Flash, Llama-3.1-8B-Instruct, and Mistral-7B-Instruct-v0.2), as an automated rubric grader (\texttt{strongreject\_finetuned}/Gemma-2B), and for assistance with manuscript editing, LaTeX formatting, schematic generation, and diagnostic script coding. All experimental designs, empirical claims, code audits, and final text were verified by the authors.
 
 \bibliographystyle{plainnat}
 \bibliography{references}
