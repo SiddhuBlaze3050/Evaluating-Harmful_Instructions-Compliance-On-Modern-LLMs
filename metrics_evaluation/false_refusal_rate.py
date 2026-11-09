@@ -298,9 +298,10 @@ def plot_frr_by_condition(frr_condition_df: pd.DataFrame,
     # Customize plot
     ax.set_xlabel("Defense Condition", fontweight='bold')
     ax.set_ylabel("False Refusal Rate", fontweight='bold')
-    ax.set_title("Over-Refusal by Defense Mechanism\n(Lower is Better)")
+    ax.set_title("")
     ax.set_xticks(x_pos)
     ax.set_xticklabels([condition_label(c) for c in plot_df['condition']])
+    ax.set_ylim(0, 0.24)
 
     # Format y-axis as percentage
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.0%}'))

@@ -154,7 +154,7 @@ def plot_roc_curve(y_true: np.ndarray, y_scores: np.ndarray,
     # Labels and formatting
     ax.set_xlabel('False Positive Rate (FPR)')
     ax.set_ylabel('True Positive Rate (TPR)')
-    ax.set_title(f'ROC Curve \u2014 {model_name} ({condition.title()})')
+    ax.set_title("")
     ax.set_xlim([0, 1])
     ax.set_ylim([0, 1])
     style_axes(ax, grid='both')
@@ -218,10 +218,14 @@ def compare_conditions_roc(results_dict: Dict[str, Tuple[np.ndarray, np.ndarray]
     ax.plot([0, 1], [0, 1], color='#7F7F7F', lw=0.9, linestyle='--',
             label='Random Classifier', alpha=0.7)
 
+    # Vertical line at 1% FPR operating point
+    ax.axvline(x=0.01, color="gray", linestyle=":", linewidth=1.5,
+               label="1% FPR Budget (0.01)")
+
     # Labels and formatting
     ax.set_xlabel('False Positive Rate (FPR)')
     ax.set_ylabel('True Positive Rate (TPR)')
-    ax.set_title(f'ROC Comparison \u2014 {model_name}')
+    ax.set_title("")
     ax.set_xlim([0, 1])
     ax.set_ylim([0, 1])
     style_axes(ax, grid='both')

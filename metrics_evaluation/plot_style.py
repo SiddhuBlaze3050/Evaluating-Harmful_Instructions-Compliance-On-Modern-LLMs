@@ -34,12 +34,12 @@ import matplotlib.pyplot as plt
 
 
 # ─── Color Palette ────────────────────────────────────────────────────────────
-# Tableau-10 subset: distinguishable under deuteranopia / protanopia
+# Okabe-Ito colorblind-safe palette
 CONDITION_COLORS: dict[str, str] = {
-    "baseline":     "#D62728",   # Muted red
-    "safedecoding": "#1F77B4",   # Muted blue
-    "llamaguard3":  "#2CA02C",   # Muted green
-    "guardrail":    "#2CA02C",   # Alias for llamaguard3
+    "baseline":     "#D55E00",   # Terracotta / red
+    "safedecoding": "#0072B2",   # Blue
+    "llamaguard3":  "#009E73",   # Green
+    "guardrail":    "#009E73",   # Alias for llamaguard3
 }
 
 CONDITION_MARKERS: dict[str, str] = {
@@ -51,7 +51,7 @@ CONDITION_MARKERS: dict[str, str] = {
 
 CONDITION_LABELS: dict[str, str] = {
     "baseline":     "Baseline",
-    "safedecoding": "Safe Decoding",
+    "safedecoding": "SafeDecoding",
     "llamaguard3":  "LlamaGuard-3",
     "guardrail":    "LlamaGuard-3",
 }
@@ -64,18 +64,18 @@ MODEL_SHORT_NAMES: dict[str, str] = {
 
 # ─── Typography ───────────────────────────────────────────────────────────────
 FONT_FAMILY     = "DejaVu Sans"
-FONT_SIZE_TITLE = 11          # axes title (pt)
-FONT_SIZE_LABEL = 10          # axis label (pt)
-FONT_SIZE_TICK  = 9           # tick label (pt)
-FONT_SIZE_LEGEND = 9          # legend text (pt)
-FONT_SIZE_ANNOT  = 8          # inline annotations (pt)
+FONT_SIZE_TITLE = 13          # axes title (pt) — kept for optional internal use
+FONT_SIZE_LABEL = 13          # axis label (pt)
+FONT_SIZE_TICK  = 11          # tick label (pt)
+FONT_SIZE_LEGEND = 11         # legend text (pt)
+FONT_SIZE_ANNOT  = 11         # inline annotations (pt)
 
 # ─── Lines & Markers ──────────────────────────────────────────────────────────
-LINE_WIDTH  = 1.75
-MARKER_SIZE = 6
+LINE_WIDTH  = 2.2
+MARKER_SIZE = 7
 
 # ─── Resolution ───────────────────────────────────────────────────────────────
-FIGURE_DPI = 600              # print-ready raster DPI
+FIGURE_DPI = 300              # print-ready raster DPI
 
 # ─── Standard Figure Sizes (inches) ───────────────────────────────────────────
 FIG_SINGLE   = (7.0, 5.0)    # double-column width, general use
@@ -140,6 +140,9 @@ def apply_publication_style() -> None:
             "savefig.pad_inches":       0.05,
             # ── Figure ────────────────────────────────────────────────────────
             "figure.dpi":               100,     # screen preview DPI
+            "figure.facecolor":         "white",
+            "axes.facecolor":           "white",
+            "savefig.facecolor":        "white",
         }
     )
 

@@ -81,8 +81,8 @@ def analyze_multiturn_degradation(multiturn_results: pd.DataFrame,
                     alpha=0.2, color='#1F77B4')
 
     ax.set_xlabel("Conversation Turn")
-    ax.set_ylabel(f"{metric_column.replace('_', ' ').title()}")
-    ax.set_title("Safety Degradation Across Turns")
+    ax.set_ylabel("StrongREJECT Score")
+    ax.set_title("")
 
     # Add linear regression line
     slope, intercept, r_value, p_value, std_err = linregress(turns, safety_mean)
@@ -156,8 +156,10 @@ def analyze_by_model_condition(multiturn_results: pd.DataFrame,
             })
     
     ax1.set_xlabel("Conversation Turn")
-    ax1.set_ylabel(f"{metric_column.replace('_', ' ').title()}")
-    ax1.set_title("Safety Degradation by Model")
+    ax1.set_ylabel("StrongREJECT Score")
+    ax1.set_title("")
+    ax1.set_xticks([1, 2, 3])
+    ax1.set_xticklabels(["1", "2", "3"])
     style_axes(ax1)
     format_legend(ax1)
 
@@ -191,8 +193,10 @@ def analyze_by_model_condition(multiturn_results: pd.DataFrame,
             })
     
     ax2.set_xlabel("Conversation Turn")
-    ax2.set_ylabel(f"{metric_column.replace('_', ' ').title()}")
-    ax2.set_title("Safety Degradation by Condition")
+    ax2.set_ylabel("StrongREJECT Score")
+    ax2.set_title("")
+    ax2.set_xticks([1, 2, 3])
+    ax2.set_xticklabels(["1", "2", "3"])
     style_axes(ax2)
     format_legend(ax2)
 
@@ -262,7 +266,7 @@ def analyze_by_model_condition(multiturn_results: pd.DataFrame,
                         'total_degradation': mean_vals.iloc[-1] - mean_vals.iloc[0]
                     })
                 
-                ax.set_title(f"{model} / {condition_label(condition)}")
+                ax.set_title("")
                 style_axes(ax)
                 ax.legend(fontsize=7, loc='best', frameon=True,
                           framealpha=0.9, edgecolor='#CCCCCC', fancybox=False)
